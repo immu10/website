@@ -79,12 +79,20 @@ html.dark .heading-analogous {
   color: #7ab8ff;
 }
 
-/* Heading colour: white in light mode, pink in dark mode */
+/* Heading colour: pink in both modes (white blended into the light bg). */
 .head-white-pink {
-  color: #ffffff;
+  color: #ff5e9c;
 }
 html.dark .head-white-pink {
   color: #ff5e9c;
+}
+
+/* Body/description accent: orange in light mode, mint in dark mode. */
+.body-accent {
+  color: #ff7a18;
+}
+html.dark .body-accent {
+  color: #6cf0bf;
 }
 
 /* Darkening overlay for dark mode. Sits over the background canvas (same z-index,
