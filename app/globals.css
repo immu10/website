@@ -66,6 +66,9 @@ body {
 .font-lora {
   font-family: var(--font-lora), serif;
 }
+.font-body {
+  font-family: var(--font-body), "Comic Neue", sans-serif;
+}
 
 /* Heading colour adapts to the mode (stays analogous to the turquoise bg):
    deeper blue on the bright default background, lighter blue when dark. */
