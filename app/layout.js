@@ -55,9 +55,17 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${permanentMarker.variable} ${caveat.variable} ${comicNeue.variable} ${lora.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/* Set dark mode before paint (defaults to dark) to avoid a flash. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var s=localStorage.getItem('dark');if(s===null||s==='1')document.documentElement.classList.add('dark');}catch(e){document.documentElement.classList.add('dark');}})();`,
+          }}
+        />
+
         {/* Site-wide background: the "sub2" theme (noise water + dim bubbles). */}
         <CausticsCanvas variant="noise" />
         <BubbleField dim />

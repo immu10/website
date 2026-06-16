@@ -8,11 +8,12 @@ import { useEffect, useState } from "react";
 export default function DarkToggle() {
   const [dark, setDark] = useState(false);
 
-  // On first load, restore the saved preference.
+  // On first load, restore the saved preference (defaults to dark).
   useEffect(() => {
-    const saved = localStorage.getItem("dark") === "1";
-    setDark(saved);
-    document.documentElement.classList.toggle("dark", saved);
+    const saved = localStorage.getItem("dark");
+    const isDark = saved === null ? true : saved === "1";
+    setDark(isDark);
+    document.documentElement.classList.toggle("dark", isDark);
   }, []);
 
   function toggle() {

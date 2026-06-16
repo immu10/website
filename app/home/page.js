@@ -9,7 +9,7 @@ export default function Home() {
       </h1>
 
       {/* brief description -> Caveat, mint/aqua-green */}
-      <p className="font-desc max-w-md text-2xl sm:text-3xl text-[#6cf0bf]">
+      <p className="font-desc body-accent max-w-md text-2xl sm:text-3xl">
        I am very much a consumer of media, I like making apps too and I'm on the hunt
        for a role in Software Engineering .
       </p>
@@ -18,19 +18,19 @@ export default function Home() {
       <div className="flex flex-wrap items-center justify-center gap-4">
         <a
           href="/aboutme"
-          className="rounded-full bg-black px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-black dark:hover:bg-zinc-300"
+          className="rounded-full bg-black px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white/10 dark:text-white dark:ring-1 dark:ring-white/15 dark:backdrop-blur-sm dark:hover:bg-white/20"
         >
           About me
         </a>
         <a
           href="/projects"
-          className="rounded-full bg-black px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-black dark:hover:bg-zinc-300"
+          className="rounded-full bg-black px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white/10 dark:text-white dark:ring-1 dark:ring-white/15 dark:backdrop-blur-sm dark:hover:bg-white/20"
         >
           Projects
         </a>
         <a
           href="/cv"
-          className="rounded-full bg-black px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-black dark:hover:bg-zinc-300"
+          className="rounded-full bg-black px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white/10 dark:text-white dark:ring-1 dark:ring-white/15 dark:backdrop-blur-sm dark:hover:bg-white/20"
         >
           CV
         </a>
