@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# immu10.com
 
-## Getting Started
+My personal site — built with Next.js (App Router) and Tailwind CSS, deployed on
+Vercel at [immu10.com](https://immu10.com).
 
-First, run the development server:
+## Features
+
+- Animated WebGL water background + canvas "marine snow" particles, with a
+  flash-free **dark mode** (defaults to dark, remembers your choice).
+- **/home** — landing page (`/` redirects here).
+- **/aboutme** — a centered intro plus a live "showcase" of what I'm into:
+  - **Music** — Spotify *now playing* + *top tracks* (live).
+  - **Games** — Steam *most played* (live), with a couple of picks pinned.
+  - **Shows / Movies** — posters via TMDB (covers anime, kdramas, movies).
+  - **Manhwas** — covers via AniList (no key needed).
+- **/projects** — work-in-progress tiles (the next thing to build out).
+- **/cv** — a custom PDF viewer for my CV, with download / open-in-tab.
+
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000).
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## Environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The showcase integrations need API keys. Copy the example and fill it in:
 
-## Learn More
+```bash
+cp .env.local.example .env.local
+```
 
-To learn more about Next.js, take a look at the following resources:
+| Variable | Used by | Where to get it |
+| --- | --- | --- |
+| `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` / `SPOTIFY_REFRESH_TOKEN` | Music | [Spotify dashboard](https://developer.spotify.com/dashboard); refresh token via `/api/spotify/login` |
+| `STEAM_API_KEY` / `STEAM_ID` | Games | [Steam Web API key](https://steamcommunity.com/dev/apikey) + your steamID64 (profile must be public) |
+| `TMDB_API_KEY` | Shows / Movies | [TMDB API settings](https://www.themoviedb.org/settings/api) ("API Key v3 auth") |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+AniList (Manhwas) needs no key. See `.env.local.example` for step-by-step notes.
+For production, add the same variables in **Vercel → Settings → Environment
+Variables**, then redeploy.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project structure
 
-## Deploy on Vercel
+```
+app/
+  api/            route handlers for the integrations
+    spotify/  steam/  tmdb/  anilist/
+  components/
+    showcase/     NowPlaying, TopTracks, SteamGames, ShowsMovies, ManhwaList
+    background/   CausticsCanvas, BubbleField, WaterBackground
+    DarkToggle.js, CVViewer.js
+  lib/            shared helpers (spotify token)
+  home/  aboutme/  projects/  cv/   page routes
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deployment
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **`prod`** is the branch Vercel deploys (the live site). It carries one clean
+  snapshot per release.
+- **`master`** is the working branch (full history).
+
+A pre-commit hook (`.githooks/pre-commit` → `scripts/check-cv.js`) blocks commits
+if a phone number is detected in `public/cv.pdf`. Enable hooks on a fresh clone:
+
+```bash
+git config core.hooksPath .githooks
+```

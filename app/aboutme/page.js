@@ -19,7 +19,7 @@ export default function AboutMe() {
           I'm also immu10
         </h1>
 
-        <p className="font-desc max-w-md text-2xl sm:text-3xl text-[#6cf0bf]">
+        <p className="font-desc body-accent max-w-md text-2xl sm:text-3xl">
           On the occasional off chance I have an idea, I make an app, but besides
           my productivity aspects, I play a lot of games, watch a lot of shows, and listen
           to music almost always. I like sleeping even though I'm an insomniac. My plans
