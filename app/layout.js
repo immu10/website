@@ -44,7 +44,7 @@ const lora = Lora({
 });
 
 export const metadata = {
-  title: "My Site",
+  title: "immu10",
   description: "My first Next.js website",
   // Tells the Dark Reader extension to leave this site alone (we control the
   // colours ourselves), which avoids it overriding the background.

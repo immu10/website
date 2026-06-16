@@ -17,16 +17,16 @@ export default function Home() {
       {/* three buttons (first two are placeholders for now; third is the CV) */}
       <div className="flex flex-wrap items-center justify-center gap-4">
         <a
-          href="/about"
+          href="/aboutme"
           className="rounded-full bg-black px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-black dark:hover:bg-zinc-300"
         >
-          Lorem ipsum
+          About me
         </a>
         <a
-          href="#"
+          href="/projects"
           className="rounded-full bg-black px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-black dark:hover:bg-zinc-300"
         >
-          Lorem ipsum
+          Projects
         </a>
         <a
           href="/cv"
