@@ -76,6 +76,14 @@ html.dark .heading-analogous {
   color: #7ab8ff;
 }
 
+/* Heading colour: white in light mode, pink in dark mode */
+.head-white-pink {
+  color: #ffffff;
+}
+html.dark .head-white-pink {
+  color: #ff5e9c;
+}
+
 /* Darkening overlay for dark mode. Sits over the background canvas (same z-index,
    later in the DOM) but below the page text, so only the background dims. */
 .dark-overlay {
