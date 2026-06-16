@@ -1,0 +1,201 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  position: relative;
+
+  /* Toony water, dark mode: still saturated cartoon bands, but deep and dim */
+  background: linear-gradient(
+    to bottom,
+    #0e5063,
+    #0c4a6e,
+    #0a3b54,
+    #082f49,
+    #051a2e,
+    #010a10
+  );
+  background-size: 100% 200%;
+  animation: drift 24s ease-in-out infinite; /* slow gentle current */
+
+  color: #e0f2fe; /* pale water-blue text */
+  font-family: var(--font-body), "Comic Neue", sans-serif; /* bundled Comic Neue */
+}
+
+/* WebGL caustics canvas (the /depth and /topdown experiments).
+   Fixed full-screen, behind content, click-through. The background colour is a
+   fallback shown only if WebGL isn't available. */
+.caustics-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  display: block;
+  pointer-events: none;
+  background: #04141f;
+}
+
+/* Typography:
+   - headings  -> Permanent Marker
+   - descriptions -> Caveat
+   - body text -> Comic Neue (bundled), set on <body> */
+.font-heading {
+  font-family: var(--font-heading), cursive;
+}
+.font-desc {
+  font-family: var(--font-desc), cursive;
+}
+.font-lora {
+  font-family: var(--font-lora), serif;
+}
+
+/* Heading colour adapts to the mode (stays analogous to the turquoise bg):
+   deeper blue on the bright default background, lighter blue when dark. */
+.heading-analogous {
+  color: #1f74d6;
+}
+html.dark .heading-analogous {
+  color: #7ab8ff;
+}
+
+/* Darkening overlay for dark mode. Sits over the background canvas (same z-index,
+   later in the DOM) but below the page text, so only the background dims. */
+.dark-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: #000;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+html.dark .dark-overlay {
+  opacity: 0.5;
+}
+
+/* The dark-mode toggle button (top-right, above everything, clickable). */
+.dark-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 50;
+  padding: 0.5rem 0.9rem;
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e0f2fe;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(4px);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.dark-toggle:hover {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+/* Sky / cloud WebGL canvas. Fallback colour is sky blue if WebGL is missing. */
+.sky-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  display: block;
+  pointer-events: none;
+  background: #3a8fe0;
+}
+
+/* The physics bubble layer — sits over the water canvas, behind the text. */
+.bubble-field {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  display: block;
+  pointer-events: none;
+}
+
+/* Container for the light-shaft columns. Fixed + behind everything + click-through. */
+.water-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* One vertical light column. It's a wide, soft beam (faded on the sides) so
+   neighbouring columns overlap and blend — no hard strip edges. The column does
+   NOT move; instead its brightness pulses (see the `glow` animation). */
+.water-shaft {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 14%; /* wider than the spacing, so columns overlap and blend smoothly */
+  transform: translateX(-50%);
+  /* Soft beam: bright near the top, fading down and out to the sides */
+  background: radial-gradient(
+    60% 75% at 50% 0%,
+    rgba(150, 230, 245, 0.85),
+    transparent 72%
+  );
+  mix-blend-mode: screen; /* light adds up where beams overlap = smooth field */
+  animation-name: glow;
+  animation-timing-function: ease-in-out; /* eased pulse ≈ a sine wave */
+  animation-iteration-count: infinite;
+}
+
+/* Gentle vertical drift of the base water */
+@keyframes drift {
+  0%,
+  100% {
+    background-position: 50% 0%;
+  }
+  50% {
+    background-position: 50% 100%;
+  }
+}
+
+/* Each column's brightness pulses dim -> bright -> dim. Every column uses this
+   SAME pulse; the component offsets each one in time by its position, so the
+   bright band travels across the screen like a sine wave. */
+@keyframes glow {
+  0%,
+  100% {
+    opacity: 0.05;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* Respect people who prefer no motion (accessibility) — turn all motion off */
+@media (prefers-reduced-motion: reduce) {
+  body,
+  .water-shaft {
+    animation: none;
+  }
+  .water-shaft {
+    opacity: 0.18; /* hold a calm, dim brightness instead of full-on */
+  }
+}
