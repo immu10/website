@@ -12,7 +12,7 @@ export default function About() {
         dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat.
       </p>
 
-      <a href="/" className="font-medium underline underline-offset-4">
+      <a href="/home" className="font-medium underline underline-offset-4">
         ← Lorem ipsum
       </a>
     </main>
