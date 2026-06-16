@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  position: relative;
+
+  /* Toony water, dark mode: still saturated cartoon bands, but deep and dim */
+  background: linear-gradient(
+    to bottom,
+    #0e5063,
+    #0c4a6e,
+    #0a3b54,
+    #082f49,
+    #051a2e,
+    #010a10
+  );
+  background-size: 100% 200%;
+  animation: drift 24s ease-in-out infinite; /* slow gentle current */
+
+  color: #e0f2fe; /* pale water-blue text */
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Container for the light-shaft columns. Fixed + behind everything + click-through. */
+.water-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* One vertical light column. It's a wide, soft beam (faded on the sides) so
+   neighbouring columns overlap and blend — no hard strip edges. The column does
+   NOT move; instead its brightness pulses (see the `glow` animation). */
+.water-shaft {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 14%; /* wider than the spacing, so columns overlap and blend smoothly */
+  transform: translateX(-50%);
+  /* Soft beam: bright near the top, fading down and out to the sides */
+  background: radial-gradient(
+    60% 75% at 50% 0%,
+    rgba(150, 230, 245, 0.85),
+    transparent 72%
+  );
+  mix-blend-mode: screen; /* light adds up where beams overlap = smooth field */
+  animation-name: glow;
+  animation-timing-function: ease-in-out; /* eased pulse ≈ a sine wave */
+  animation-iteration-count: infinite;
+}
+
+/* Gentle vertical drift of the base water */
+@keyframes drift {
+  0%,
+  100% {
+    background-position: 50% 0%;
+  }
+  50% {
+    background-position: 50% 100%;
+  }
+}
+
+/* Each column's brightness pulses dim -> bright -> dim. Every column uses this
+   SAME pulse; the component offsets each one in time by its position, so the
+   bright band travels across the screen like a sine wave. */
+@keyframes glow {
+  0%,
+  100% {
+    opacity: 0.05;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* Respect people who prefer no motion (accessibility) — turn all motion off */
+@media (prefers-reduced-motion: reduce) {
+  body,
+  .water-shaft {
+    animation: none;
+  }
+  .water-shaft {
+    opacity: 0.18; /* hold a calm, dim brightness instead of full-on */
+  }
+}
