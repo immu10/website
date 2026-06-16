@@ -7,8 +7,8 @@
 import { useEffect, useRef } from "react";
 
 const COUNT = 75; // how many specks
-const REPEL_RADIUS = 140; // px around the cursor that pushes specks
-const REPEL_FORCE = 7; // how hard the push is
+const REPEL_RADIUS = 85; // px around the cursor that pushes specks
+const REPEL_FORCE = 3.5; // how hard the push is
 
 export default function BubbleField({ dim = false }) {
   const ref = useRef(null);
