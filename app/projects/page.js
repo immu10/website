@@ -1,5 +1,7 @@
 // app/projects/page.js  ->  served at /projects
 
+// WIP: videos come later. For now each tile shows a "construction" placeholder.
+// TODO (next): clicking a tile opens its own page (e.g. /projects/[slug]).
 const projects = [
   {
     title: "Lorem ipsum",
@@ -26,9 +28,10 @@ export default function Projects() {
             key={i}
             className="flex flex-col overflow-hidden rounded-2xl bg-black/20 ring-1 ring-white/10 backdrop-blur-sm transition-transform hover:-translate-y-1"
           >
-            {/* placeholder image */}
-            <div className="flex aspect-video items-center justify-center bg-white/5 text-sm text-white/40">
-              image
+            {/* placeholder until the videos / project pages are ready */}
+            <div className="flex aspect-video flex-col items-center justify-center gap-1 bg-white/5 text-white/40">
+              <span className="text-2xl">🚧</span>
+              <span className="font-desc text-base">construction in progress</span>
             </div>
 
             <div className="flex flex-col gap-2 p-5 text-center">

@@ -35,7 +35,7 @@ export default function CV() {
       </div>
 
       <a href="/home" className="text-sm text-sky-100 underline underline-offset-4">
-        ← Back home
+        ← Back to home
       </a>
     </main>
   );
