@@ -7,8 +7,8 @@ import {
   Lora,
 } from "next/font/google";
 import "./globals.css";
-import CausticsCanvas from "./components/CausticsCanvas";
-import BubbleField from "./components/BubbleField";
+import CausticsCanvas from "./components/background/CausticsCanvas";
+import BubbleField from "./components/background/BubbleField";
 import DarkToggle from "./components/DarkToggle";
 
 const geistSans = Geist({
@@ -45,7 +45,7 @@ const lora = Lora({
 
 export const metadata = {
   title: "immu10",
-  description: "My first Next.js website",
+  description: "site about me:3",
   // Tells the Dark Reader extension to leave this site alone (we control the
   // colours ourselves), which avoids it overriding the background.
   other: { "darkreader-lock": "true" },
