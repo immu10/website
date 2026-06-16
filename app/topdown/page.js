@@ -21,9 +21,12 @@ export default function TopDown() {
           Home
         </a>
         <a href="/depth" className="underline underline-offset-4 hover:text-white">
-          Depth view
+          Depth
         </a>
         <span className="text-white">Top-down</span>
+        <a href="/subnautica" className="underline underline-offset-4 hover:text-white">
+          Subnautica
+        </a>
       </nav>
     </main>
   );

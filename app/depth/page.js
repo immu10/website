@@ -22,7 +22,10 @@ export default function Depth() {
         </a>
         <span className="text-white">Depth</span>
         <a href="/topdown" className="underline underline-offset-4 hover:text-white">
-          Top-down view
+          Top-down
+        </a>
+        <a href="/subnautica" className="underline underline-offset-4 hover:text-white">
+          Subnautica
         </a>
       </nav>
     </main>

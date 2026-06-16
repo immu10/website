@@ -100,6 +100,92 @@ void main() {
 }
 `;
 
+// Subnautica shallows: bright turquoise gradient + god rays + caustic shimmer
+// + drifting marine-snow particles.
+const FRAG_SUBNAUTICA = `
+precision highp float;
+uniform float u_time;
+uniform vec2 u_res;
+#define TAU 6.28318530718
+
+// wavy surface light (for the god rays)
+float surf(float x, float t) {
+  float s = 0.0;
+  s += sin(x * 5.0 + t * 1.0);
+  s += 0.6 * sin(x * 9.0 - t * 1.4);
+  s += 0.35 * sin(x * 15.0 + t * 0.7);
+  return s / 1.95;
+}
+
+// caustic "net" shimmer
+float caustic(vec2 uv, float t) {
+  vec2 p = mod(uv * TAU, TAU) - 250.0;
+  vec2 i = p;
+  float c = 1.0;
+  float inten = 0.005;
+  for (int n = 0; n < 4; n++) {
+    float tt = t * (1.0 - (3.5 / float(n + 1)));
+    i = p + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x));
+    c += 1.0 / length(vec2(p.x / (sin(i.x + tt) / inten), p.y / (cos(i.y + tt) / inten)));
+  }
+  c /= 4.0;
+  c = 1.17 - pow(c, 1.4);
+  return pow(abs(c), 5.0);
+}
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 345.45));
+  p += dot(p, p + 34.345);
+  return fract(p.x * p.y);
+}
+
+// drifting marine-snow specks (two layers)
+float snow(vec2 uv, float t) {
+  float m = 0.0;
+  for (int k = 0; k < 2; k++) {
+    float fk = float(k);
+    float scale = 9.0 + fk * 7.0;
+    vec2 gv = uv * scale;
+    gv.y += t * (0.06 + fk * 0.03);      // slow downward drift
+    gv.x += sin(t * 0.2 + fk) * 0.3;     // gentle sway
+    vec2 id = floor(gv);
+    vec2 f = fract(gv) - 0.5;
+    float h = hash21(id + fk * 37.0);
+    vec2 off = (vec2(h, fract(h * 57.0)) - 0.5) * 0.7;
+    float d = length(f - off);
+    float size = 0.03 + 0.04 * h;
+    m += smoothstep(size, 0.0, d) * (0.4 + 0.6 * h);
+  }
+  return m;
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res.xy;
+  float aspect = u_res.x / u_res.y;
+  float depth = 1.0 - uv.y;              // 0 surface (top) .. 1 deep (bottom)
+  float x = uv.x * aspect;
+  float t = u_time;
+
+  // Sunlit shallows turquoise -> deep blue
+  vec3 top = vec3(0.18, 0.70, 0.78);
+  vec3 bot = vec3(0.02, 0.12, 0.28);
+  vec3 col = mix(top, bot, smoothstep(-0.1, 1.1, depth));
+
+  // God rays from the surface, fading with depth
+  float ray = pow(surf(x + depth * 0.2, t) * 0.5 + 0.5, 2.2);
+  col += vec3(0.55, 1.0, 0.92) * ray * mix(0.5, 0.0, depth) * 0.5;
+
+  // Caustic shimmer, strongest near the surface
+  float caust = caustic(vec2(x, uv.y) * 3.0, t * 0.4 + 12.0);
+  col += vec3(0.6, 1.0, 0.95) * caust * (1.0 - depth) * 0.35;
+
+  // Marine snow
+  col += vec3(0.85, 0.97, 1.0) * snow(vec2(x, uv.y), t) * 0.5;
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
 function compile(gl, type, src) {
   const sh = gl.createShader(type);
   gl.shaderSource(sh, src);
@@ -125,7 +211,15 @@ export default function CausticsCanvas({ mode = "topdown" }) {
     gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, VERT));
     gl.attachShader(
       program,
-      compile(gl, gl.FRAGMENT_SHADER, mode === "depth" ? FRAG_DEPTH : FRAG_TOPDOWN)
+      compile(
+        gl,
+        gl.FRAGMENT_SHADER,
+        mode === "depth"
+          ? FRAG_DEPTH
+          : mode === "subnautica"
+            ? FRAG_SUBNAUTICA
+            : FRAG_TOPDOWN
+      )
     );
     gl.linkProgram(program);
     gl.useProgram(program);

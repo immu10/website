@@ -53,6 +53,59 @@ body {
   background: #04141f;
 }
 
+/* The Peeper: fixed, behind the text, swims across and back. */
+.peeper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 9rem;
+  z-index: -1; /* behind page text, above the canvas */
+  pointer-events: none;
+  will-change: transform;
+  animation: peeper-swim 26s ease-in-out infinite;
+}
+.peeper svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.3));
+}
+/* the tail flicks back and forth */
+.peeper-tail {
+  transform-box: fill-box;
+  transform-origin: right center;
+  animation: peeper-tail 0.55s ease-in-out infinite;
+}
+
+/* swims left -> right, gently rising and dipping, then loops */
+@keyframes peeper-swim {
+  0% {
+    transform: translate(-22vw, 30vh) rotate(-2deg);
+  }
+  25% {
+    transform: translate(18vw, 38vh) rotate(2deg);
+  }
+  50% {
+    transform: translate(52vw, 26vh) rotate(-2deg);
+  }
+  75% {
+    transform: translate(84vw, 42vh) rotate(2deg);
+  }
+  100% {
+    transform: translate(122vw, 30vh) rotate(-2deg);
+  }
+}
+
+@keyframes peeper-tail {
+  0%,
+  100% {
+    transform: rotate(-13deg);
+  }
+  50% {
+    transform: rotate(13deg);
+  }
+}
+
 /* Container for the light-shaft columns. Fixed + behind everything + click-through. */
 .water-bg {
   position: fixed;
@@ -110,7 +163,9 @@ body {
 /* Respect people who prefer no motion (accessibility) — turn all motion off */
 @media (prefers-reduced-motion: reduce) {
   body,
-  .water-shaft {
+  .water-shaft,
+  .peeper,
+  .peeper-tail {
     animation: none;
   }
   .water-shaft {
