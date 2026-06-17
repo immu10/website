@@ -7,6 +7,7 @@ import {
   Lora,
 } from "next/font/google";
 import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
 import CausticsCanvas from "./components/background/CausticsCanvas";
 import BubbleField from "./components/background/BubbleField";
 import DarkToggle from "./components/DarkToggle";
@@ -82,6 +83,7 @@ export default function RootLayout({ children }) {
 
         <DarkToggle />
         {children}
+        <Analytics />
       </body>
     </html>
   );
