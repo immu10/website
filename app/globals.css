@@ -320,3 +320,47 @@ html.dark .dark-overlay {
   color: #bfe6d8;
   font-style: italic;
 }
+
+/* Centered variant — used in the right column of project pages so the
+   headings + diagram + table sit centered within that column. */
+.markdown-center h2,
+.markdown-center h3,
+.markdown-center h4,
+.markdown-center p {
+  text-align: center;
+}
+.markdown-center pre {
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: left; /* keep ASCII diagrams aligned */
+}
+.markdown-center table {
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Sit flush inside card padding (no stray top/bottom margins on edge children). */
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+/* Hide section-divider rules (--- in the README). */
+.markdown hr {
+  display: none;
+}
+
+/* Hidden scrollbar (used by the independent scroll panes on project pages). */
+.no-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}

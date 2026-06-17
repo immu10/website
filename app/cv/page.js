@@ -14,6 +14,13 @@ const CVViewer = dynamic(() => import("../components/CVViewer"), {
 export default function CV() {
   return (
     <main className="flex flex-1 flex-col items-center gap-6 px-4 py-10">
+      <a
+        href="/home"
+        className="self-start font-medium underline underline-offset-4"
+      >
+        ← Back to home
+      </a>
+
       <CVViewer />
 
       <div className="flex flex-wrap items-center justify-center gap-4">
