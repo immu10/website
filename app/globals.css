@@ -218,3 +218,105 @@ html.dark .dark-overlay {
     opacity: 0.18; /* hold a calm, dim brightness instead of full-on */
   }
 }
+
+/* ---------- Rendered markdown (project pages) ---------- */
+.markdown {
+  color: #e6f3ff;
+  line-height: 1.7;
+  font-family: var(--font-body), "Comic Neue", sans-serif;
+}
+.markdown h2 {
+  font-family: var(--font-heading), cursive;
+  color: #ff5e9c;
+  font-size: 1.6rem;
+  margin: 1.8rem 0 0.6rem;
+}
+.markdown h3 {
+  font-family: var(--font-heading), cursive;
+  color: #ffd1e3;
+  font-size: 1.25rem;
+  margin: 1.3rem 0 0.4rem;
+}
+.markdown h4 {
+  font-weight: 700;
+  color: #cfeaff;
+  margin: 1rem 0 0.3rem;
+}
+.markdown p {
+  margin: 0.6rem 0;
+}
+.markdown ul,
+.markdown ol {
+  margin: 0.6rem 0;
+  padding-left: 1.4rem;
+}
+.markdown ul {
+  list-style: disc;
+}
+.markdown ol {
+  list-style: decimal;
+}
+.markdown li {
+  margin: 0.25rem 0;
+}
+.markdown a {
+  color: #6cf0bf;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.markdown strong {
+  color: #ffffff;
+  font-weight: 700;
+}
+/* Inline code */
+.markdown code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.9em;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+}
+/* Code blocks + ASCII diagrams: monospace, scroll instead of wrap */
+.markdown pre {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.6rem;
+  padding: 1rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+.markdown pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre;
+  color: #d8e8f5;
+}
+/* Tables */
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+  display: block;
+  overflow-x: auto;
+}
+.markdown th,
+.markdown td {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+}
+.markdown th {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-weight: 700;
+}
+.markdown blockquote {
+  border-left: 3px solid #6cf0bf;
+  padding-left: 0.9rem;
+  margin: 1rem 0;
+  color: #bfe6d8;
+  font-style: italic;
+}
