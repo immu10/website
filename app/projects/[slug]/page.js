@@ -63,7 +63,12 @@ export default async function ProjectPage({ params }) {
     "overview"
   );
 
-  const player = project.video && (
+  // Media for the left card: a YouTube embed if the README links one, else the
+  // "## Screenshot" image if present. Drives the one-column vs two-column choice.
+  const screenshotSrc = project.screenshot ? fixImg(project.screenshot) : null;
+  const hasMedia = Boolean(project.video || screenshotSrc);
+
+  const media = project.video ? (
     <div className="aspect-video w-full overflow-hidden rounded-xl ring-1 ring-white/10">
       <iframe
         className="h-full w-full"
@@ -74,7 +79,14 @@ export default async function ProjectPage({ params }) {
         allowFullScreen
       />
     </div>
-  );
+  ) : screenshotSrc ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={screenshotSrc}
+      alt={`${project.title} screenshot`}
+      className="w-full overflow-hidden rounded-xl ring-1 ring-white/10"
+    />
+  ) : null;
 
   const footerLinks = (
     <div className="flex flex-col items-start gap-4">
@@ -99,9 +111,9 @@ export default async function ProjectPage({ params }) {
   return (
     <main
       className={`mx-auto flex w-full flex-1 flex-col gap-6 overflow-x-hidden p-6 sm:p-8 ${
-        project.video
+        hasMedia
           ? "max-w-[1760px] lg:h-dvh lg:flex-none lg:overflow-hidden"
-          : "max-w-3xl"
+          : ""
       }`}
     >
       {/* back link — top left */}
@@ -150,18 +162,39 @@ export default async function ProjectPage({ params }) {
             </a>
           )}
         </div>
+
+        {project.demo && (project.demo.url || project.demo.note) && (
+          <div className="flex flex-col items-center gap-2">
+            {project.demo.url && (
+              <a
+                href={project.demo.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-full bg-[#ff5e9c]/10 px-7 py-3 font-desc text-2xl font-bold text-white ring-1 ring-[#ff5e9c]/40 backdrop-blur-sm transition-colors hover:bg-[#ff5e9c]/20"
+              >
+                ▶ Live Demo ↗
+              </a>
+            )}
+            {project.demo.note && (
+              <div className="markdown markdown-center max-w-md text-base font-bold text-white [&_*]:!font-bold [&_*]:!text-white">
+                {renderMd(project.demo.note)}
+              </div>
+            )}
+          </div>
+        )}
       </header>
 
-      {project.video ? (
+      {hasMedia ? (
         // Two cards, each its own independent (hidden) scroll pane on desktop.
-        // Stacks below xl; min-w-0 lets wide code/tables scroll inside, not the page.
+        // Stacks below lg; min-w-0 lets wide code/tables scroll inside, not the page.
+        // Left card: Demo video / Screenshot + Overview. Right card: the rest.
         <div className="grid gap-10 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(360px,560px)_minmax(0,1fr)] lg:[grid-template-rows:minmax(0,1fr)]">
           <aside className={`min-w-0 ${scrollPane}`}>
             <div className="flex flex-col gap-4 rounded-xl bg-black/20 p-5 ring-1 ring-white/10 backdrop-blur-sm">
               <div className="text-center font-body text-xs uppercase tracking-wide text-white/40">
-                Demo
+                {project.video ? "Demo" : "Screenshot"}
               </div>
-              {player}
+              {media}
               {overviewMd && (
                 <article className="markdown markdown-center">
                   {renderMd(overviewMd)}
@@ -177,8 +210,11 @@ export default async function ProjectPage({ params }) {
           </div>
         </div>
       ) : (
+        // No media: single centered card spanning the middle ~50% on desktop.
         <>
-          <article className="markdown">{renderMd(markdown)}</article>
+          <article className="markdown markdown-center mx-auto w-full rounded-xl bg-black/20 p-5 ring-1 ring-white/10 backdrop-blur-sm sm:p-6 lg:w-1/2">
+            {renderMd(markdown)}
+          </article>
           {footerLinks}
         </>
       )}
