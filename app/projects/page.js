@@ -10,6 +10,13 @@ export default async function Projects() {
 
   return (
     <main className="flex flex-1 flex-col items-center gap-8 p-8">
+      <a
+        href="/home"
+        className="self-start font-medium underline underline-offset-4"
+      >
+        ← Back to home
+      </a>
+
       <h1 className="font-heading head-white-pink text-4xl sm:text-5xl">Projects</h1>
 
       {projects.length === 0 ? (
@@ -24,10 +31,24 @@ export default async function Projects() {
               href={`/projects/${p.slug}`}
               className="flex flex-col overflow-hidden rounded-2xl bg-black/20 ring-1 ring-white/10 backdrop-blur-sm transition-transform hover:-translate-y-1"
             >
-              <div className="flex aspect-video items-center justify-center bg-white/5 p-4 text-center">
-                <span className="font-heading text-xl text-white/70">
-                  {p.title}
-                </span>
+              <div className="relative flex aspect-video items-center justify-center bg-white/5 p-4 text-center">
+                {p.video ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`https://img.youtube.com/vi/${p.video}/hqdefault.jpg`}
+                      alt={p.title}
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                    <span className="relative z-10 flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white">
+                      ▶
+                    </span>
+                  </>
+                ) : (
+                  <span className="font-heading text-xl text-white/70">
+                    {p.title}
+                  </span>
+                )}
               </div>
 
               <div className="flex flex-1 flex-col gap-2 p-5 text-center">
@@ -58,7 +79,7 @@ export default async function Projects() {
       )}
 
       <a href="/home" className="font-medium underline underline-offset-4">
-        ← Back home
+        ← Back to home
       </a>
     </main>
   );
