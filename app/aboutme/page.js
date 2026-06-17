@@ -13,6 +13,13 @@ const tile =
 export default function AboutMe() {
   return (
     <main className="flex flex-1 flex-col items-center gap-10 p-8 text-center">
+      <a
+        href="/home"
+        className="self-start font-medium underline underline-offset-4"
+      >
+        ← Back to home
+      </a>
+
       {/* Intro hero — centered in the viewport; scroll down for the showcase */}
       <section className="flex min-h-[85vh] flex-col items-center justify-center gap-6">
         <h1 className="font-heading head-white-pink text-4xl sm:text-5xl">
