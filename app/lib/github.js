@@ -26,6 +26,14 @@ function firstHeading(md) {
   return m ? m[1].trim() : null;
 }
 
+// First YouTube video id found in a README (watch / youtu.be / embed / shorts).
+function youtubeId(md) {
+  const m = md.match(
+    /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|v\/))([A-Za-z0-9_-]{11})/
+  );
+  return m ? m[1] : null;
+}
+
 // Pull keywords from a "## Tags" section, e.g.:
 //   ## Tags
 //   `LLM` · `Qt` · `Qwen` · `OCR`
@@ -115,6 +123,8 @@ export async function getProjects() {
         htmlUrl: r.html_url,
         archived: r.archived,
         pushedAt: r.pushed_at,
+        // YouTube video id (if the README links one) -> embed + tile thumbnail.
+        video: youtubeId(readme),
       };
     })
   );
@@ -154,4 +164,24 @@ export function filterSections(md) {
   // Fallback: if a README has none of these sections (e.g. not yet formatted),
   // show it in full rather than a blank page.
   return matchedAny ? out.join("\n").trim() : md;
+}
+
+// Split a markdown string into one named ## section vs everything else.
+// Returns { section, rest } (both trimmed strings; section "" if not found).
+export function splitOutSection(md, name) {
+  const want = name.toLowerCase();
+  const section = [];
+  const rest = [];
+  let inWanted = false;
+
+  for (const line of md.split("\n")) {
+    const h = line.match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (h && h[1].length <= 2) {
+      const title = h[2].toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+      inWanted = h[1].length === 2 && title === want;
+    }
+    (inWanted ? section : rest).push(line);
+  }
+
+  return { section: section.join("\n").trim(), rest: rest.join("\n").trim() };
 }
