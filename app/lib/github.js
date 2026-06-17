@@ -197,7 +197,20 @@ export async function getProjects() {
     })
   );
 
-  return projects.filter(Boolean);
+  // Sort by media richness (stable — ties keep the API's pushed-desc order):
+  //   1. video + live demo   2. video only   3. live demo only
+  //   4. screenshot only      5. none
+  const rank = (p) => {
+    const video = Boolean(p.video);
+    const demo = Boolean(p.demo && p.demo.url);
+    if (video && demo) return 0;
+    if (video) return 1;
+    if (demo) return 2;
+    if (p.screenshot) return 3;
+    return 4;
+  };
+
+  return projects.filter(Boolean).sort((a, b) => rank(a) - rank(b));
 }
 
 export async function getProject(slug) {
