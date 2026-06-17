@@ -44,6 +44,13 @@ export default async function Projects() {
                       ▶
                     </span>
                   </>
+                ) : p.screenshot ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={p.screenshot}
+                    alt={p.title}
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
                 ) : (
                   <span className="font-heading text-xl text-white/70">
                     {p.title}

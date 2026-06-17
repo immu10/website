@@ -21,6 +21,12 @@ function prettify(name) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Resolve a (possibly relative) README image path to an absolute raw URL.
+function absoluteRaw(slug, src) {
+  if (!src || /^https?:\/\//.test(src)) return src;
+  return `https://raw.githubusercontent.com/${USER}/${slug}/HEAD/${src.replace(/^\.?\//, "")}`;
+}
+
 function firstHeading(md) {
   const m = md.match(/^#\s+(.+)$/m);
   return m ? m[1].trim() : null;
@@ -32,6 +38,64 @@ function youtubeId(md) {
     /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|v\/))([A-Za-z0-9_-]{11})/
   );
   return m ? m[1] : null;
+}
+
+// First image found under a "## Screenshot" section, e.g.:
+//   ## Screenshot
+//   ![alt](docs/shot.png)
+// Returns the raw src (possibly relative — resolved to a full URL at render time).
+function screenshotImage(md) {
+  let inSection = false;
+  for (const line of md.split("\n")) {
+    const h = line.match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (h && h[1].length <= 2) {
+      const title = h[2].toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+      inSection = h[1].length === 2 && title === "screenshot";
+      continue;
+    }
+    if (inSection) {
+      const mdImg = line.match(/!\[[^\]]*\]\(([^)\s]+)/);
+      if (mdImg) return mdImg[1];
+      const htmlImg = line.match(/<img[^>]*\ssrc=["']([^"']+)["']/i);
+      if (htmlImg) return htmlImg[1];
+    }
+  }
+  return null;
+}
+
+// A "## Live Demo" section, e.g.:
+//   ## Live Demo
+//   https://example.com
+//   Login: demo / Password: test123
+// First content line -> the URL (bare or markdown [text](url) link).
+// Anything after it -> a note rendered under the button (e.g. demo credentials).
+// Returns { url, note } or null.
+function liveDemo(md) {
+  let inSection = false;
+  const lines = [];
+  for (const line of md.split("\n")) {
+    const h = line.match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (h && h[1].length <= 2) {
+      const title = h[2].toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+      inSection = h[1].length === 2 && title === "live demo";
+      continue;
+    }
+    if (inSection) lines.push(line);
+  }
+
+  const content = lines.join("\n").trim();
+  if (!content) return null;
+
+  const contentLines = content.split("\n");
+  const first = contentLines[0].trim();
+  const mdLink = first.match(/\]\(([^)\s]+)/);
+  const bare = first.match(/https?:\/\/\S+/);
+  const url = mdLink ? mdLink[1] : bare ? bare[0] : null;
+  // If the first line was the URL, the note is everything after it; otherwise
+  // there's no URL and the whole section is the note.
+  const note = (url ? contentLines.slice(1) : contentLines).join("\n").trim();
+
+  return { url, note: note || null };
 }
 
 // Pull keywords from a "## Tags" section, e.g.:
@@ -125,6 +189,10 @@ export async function getProjects() {
         pushedAt: r.pushed_at,
         // YouTube video id (if the README links one) -> embed + tile thumbnail.
         video: youtubeId(readme),
+        // First image under a "## Screenshot" section (absolute URL), if any.
+        screenshot: absoluteRaw(r.name, screenshotImage(readme)),
+        // "## Live Demo" section -> { url, note } -> button + note on the page.
+        demo: liveDemo(readme),
       };
     })
   );

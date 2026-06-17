@@ -29,6 +29,7 @@ const permanentMarker = Permanent_Marker({
   variable: "--font-heading",
 });
 const caveat = Caveat({
+  weight: ["400", "700"],
   subsets: ["latin"],
   variable: "--font-desc",
 });
