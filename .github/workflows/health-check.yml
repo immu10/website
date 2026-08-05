@@ -14,7 +14,7 @@ jobs:
     steps:
       - name: Query health endpoint
         run: |
-          curl -sf https://immu10.com/api/health -o health.json \
+          curl -sfL https://www.immu10.com/api/health -o health.json \
             || echo '{"ok":false,"checks":{"fetch":{"ok":false,"error":true,"note":"health endpoint itself did not respond"}}}' > health.json
           cat health.json
 
