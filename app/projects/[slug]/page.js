@@ -14,13 +14,24 @@ import {
 } from "../../lib/github";
 
 export async function generateStaticParams() {
-  const projects = await getProjects();
-  return projects.map((p) => ({ slug: p.slug }));
+  // A GitHub API failure here shouldn't fail the whole build — just skip
+  // build-time pre-generation; pages still render on-demand per request.
+  try {
+    const projects = await getProjects();
+    return projects.map((p) => ({ slug: p.slug }));
+  } catch {
+    return [];
+  }
 }
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
-  const project = await getProject(slug);
+  let project = null;
+  try {
+    project = await getProject(slug);
+  } catch {
+    // fall through to the generic title below
+  }
   return { title: project ? `${project.title} — immu10` : "Project" };
 }
 
@@ -28,10 +39,20 @@ export default async function ProjectPage({ params }) {
   const { slug } = await params;
 
   // Validate against the showcase list (enforces no-site / fork / README rules).
-  const project = await getProject(slug);
+  let project;
+  try {
+    project = await getProject(slug);
+  } catch {
+    notFound();
+  }
   if (!project) notFound();
 
-  const raw = await getReadme(slug);
+  let raw;
+  try {
+    raw = await getReadme(slug);
+  } catch {
+    notFound();
+  }
   if (!raw) notFound();
   // Strip HTML comments, then keep only the Overview / Architecture / Tech Stack
   // sections.

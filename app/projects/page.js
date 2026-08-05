@@ -4,9 +4,22 @@
 
 import Link from "next/link";
 import { getProjects } from "../lib/github";
+import snapshot from "../data/projects-snapshot.json";
 
 export default async function Projects() {
-  const projects = await getProjects();
+  let projects;
+  let stale = false;
+
+  try {
+    projects = await getProjects();
+  } catch {
+    // Live GitHub fetch failed (expired token, outage, rate limit, ...) —
+    // fall back to the last known-good snapshot committed to the repo
+    // (refreshed daily by .github/workflows/refresh-projects-snapshot.yml)
+    // instead of showing an empty page.
+    projects = snapshot.projects;
+    stale = true;
+  }
 
   return (
     <main className="flex flex-1 flex-col items-center gap-8 p-8">
@@ -18,6 +31,22 @@ export default async function Projects() {
       </a>
 
       <h1 className="font-heading head-white-pink text-4xl sm:text-5xl">Projects</h1>
+
+      {stale && (
+        <div className="flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-2 font-body text-sm text-amber-200 ring-1 ring-amber-400/30">
+          <span aria-hidden="true">⚠</span>
+          <span>
+            Live data unavailable — showing a cached version
+            {snapshot.generatedAt
+              ? ` from ${new Date(snapshot.generatedAt).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}`
+              : ""}
+            .
+          </span>
+        </div>
+      )}
 
       {projects.length === 0 ? (
         <p className="font-desc text-xl text-sky-100">

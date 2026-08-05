@@ -1,0 +1,150 @@
+{
+  "generatedAt": "2026-08-05T12:20:01.449Z",
+  "projects": [
+    {
+      "slug": "RemoteParser",
+      "title": "File Parser",
+      "description": "",
+      "tags": [
+        "Qt",
+        "C++",
+        "SSL Socket"
+      ],
+      "homepage": null,
+      "htmlUrl": "https://github.com/immu10/RemoteParser",
+      "archived": false,
+      "pushedAt": "2026-06-17T22:41:43Z",
+      "video": "C4w6T1Z4hro",
+      "screenshot": null,
+      "demo": null
+    },
+    {
+      "slug": "Fetcherbot-agentic-ROS",
+      "title": "Fetcherbot Agentic ROS",
+      "description": "",
+      "tags": [
+        "ROS",
+        "Gazebo",
+        "Agentic",
+        "TB3",
+        "college project",
+        "AI for Robotics"
+      ],
+      "homepage": null,
+      "htmlUrl": "https://github.com/immu10/Fetcherbot-agentic-ROS",
+      "archived": false,
+      "pushedAt": "2026-06-17T18:57:40Z",
+      "video": "pmbQZr9Oym0",
+      "screenshot": null,
+      "demo": null
+    },
+    {
+      "slug": "OnscreenTranslator",
+      "title": "OnscreenTranslator",
+      "description": "",
+      "tags": [
+        "LLM",
+        "Qt",
+        "Qwen",
+        "OCR"
+      ],
+      "homepage": null,
+      "htmlUrl": "https://github.com/immu10/OnscreenTranslator",
+      "archived": false,
+      "pushedAt": "2026-06-17T18:55:28Z",
+      "video": "WGv9_rZozUE",
+      "screenshot": null,
+      "demo": null
+    },
+    {
+      "slug": "AES-and-RSA-data-storage",
+      "title": "Secure Hospital Database",
+      "description": "",
+      "tags": [
+        "AES",
+        "RSA",
+        "Envelope Encryption",
+        "college project",
+        "Cryptography"
+      ],
+      "homepage": null,
+      "htmlUrl": "https://github.com/immu10/AES-and-RSA-data-storage",
+      "archived": false,
+      "pushedAt": "2026-06-17T21:32:38Z",
+      "video": null,
+      "screenshot": "https://raw.githubusercontent.com/immu10/AES-and-RSA-data-storage/HEAD/image.png",
+      "demo": {
+        "url": "https://aes-and-rsa-immu10.streamlit.app/",
+        "note": "**Demo login (Admin):** username `admin` · password `admin`"
+      }
+    },
+    {
+      "slug": "RandomForest-Credit-Card-Fraud-Detection",
+      "title": "Credit Card Fraud Detection",
+      "description": "",
+      "tags": [
+        "ML",
+        "RandomForest",
+        "college project"
+      ],
+      "homepage": null,
+      "htmlUrl": "https://github.com/immu10/RandomForest-Credit-Card-Fraud-Detection",
+      "archived": false,
+      "pushedAt": "2026-06-17T23:26:52Z",
+      "video": null,
+      "screenshot": "https://raw.githubusercontent.com/immu10/RandomForest-Credit-Card-Fraud-Detection/HEAD/image.png",
+      "demo": null
+    },
+    {
+      "slug": "financeSummariser",
+      "title": "FinSight AI",
+      "description": "",
+      "tags": [
+        "PDF-parsing",
+        "financial-analysis",
+        "college project",
+        "LLMs"
+      ],
+      "homepage": null,
+      "htmlUrl": "https://github.com/immu10/financeSummariser",
+      "archived": false,
+      "pushedAt": "2026-06-17T23:13:28Z",
+      "video": null,
+      "screenshot": "https://raw.githubusercontent.com/immu10/financeSummariser/HEAD/image.png",
+      "demo": null
+    },
+    {
+      "slug": "PDF-Summarization-Mistral",
+      "title": "DOCUMENT SUMMARIZATION",
+      "description": "",
+      "tags": [
+        "college project",
+        "NLP"
+      ],
+      "homepage": null,
+      "htmlUrl": "https://github.com/immu10/PDF-Summarization-Mistral",
+      "archived": false,
+      "pushedAt": "2026-06-17T22:44:43Z",
+      "video": null,
+      "screenshot": "https://raw.githubusercontent.com/immu10/PDF-Summarization-Mistral/HEAD/image.png",
+      "demo": null
+    },
+    {
+      "slug": "PDF-Querying-FAISS",
+      "title": "PDF querying Faiss",
+      "description": "",
+      "tags": [
+        "RAG",
+        "LangGraph",
+        "FAISS"
+      ],
+      "homepage": null,
+      "htmlUrl": "https://github.com/immu10/PDF-Querying-FAISS",
+      "archived": false,
+      "pushedAt": "2026-06-17T17:02:00Z",
+      "video": null,
+      "screenshot": null,
+      "demo": null
+    }
+  ]
+}

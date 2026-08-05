@@ -29,8 +29,11 @@ export async function GET() {
     });
 
     // 204 = nothing playing, 200 with empty body can also happen
-    if (res.status === 204 || res.status > 400) {
+    if (res.status === 204) {
       return Response.json({ isPlaying: false, configured: true });
+    }
+    if (!res.ok) {
+      return Response.json({ isPlaying: false, configured: true, error: true });
     }
 
     const song = await res.json();

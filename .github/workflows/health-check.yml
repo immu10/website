@@ -1,0 +1,87 @@
+name: Site health check
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # every 6 hours
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query health endpoint
+        run: |
+          curl -sf https://immu10.com/api/health -o health.json \
+            || echo '{"ok":false,"checks":{"fetch":{"ok":false,"error":true,"note":"health endpoint itself did not respond"}}}' > health.json
+          cat health.json
+
+      - name: Open/update/close tracking issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('health.json', 'utf8'));
+            const label = 'health-check';
+            const title = '⚠ immu10.com health check failed';
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+            });
+            const existing = issues[0];
+
+            if (data.ok) {
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body: 'All checks are passing again — closing.',
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  state: 'closed',
+                });
+              }
+              return;
+            }
+
+            const failing = Object.entries(data.checks || {})
+              .filter(([, v]) => !v.ok)
+              .map(([k, v]) => `- **${k}**: \`${JSON.stringify(v)}\``)
+              .join('\n');
+
+            const body = [
+              'Automated health check against `immu10.com` found a problem.',
+              '',
+              failing,
+              '',
+              'Full response:',
+              '```json',
+              JSON.stringify(data, null, 2),
+              '```',
+            ].join('\n');
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: [label],
+              });
+            }

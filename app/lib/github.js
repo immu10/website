@@ -144,17 +144,21 @@ export async function getReadme(slug) {
     `https://api.github.com/repos/${USER}/${slug}/readme`,
     { headers: headers("application/vnd.github.raw"), next: { revalidate: REVALIDATE } }
   );
-  if (!res.ok) return null;
+  if (res.status === 404) return null; // no README -> valid "not showcased"
+  if (!res.ok) throw new Error(`GitHub readme fetch failed for ${slug}: ${res.status}`);
   return res.text();
 }
 
 // All repos that qualify for the site, newest first.
+// Throws on a genuine GitHub API failure (bad/expired token, outage, rate
+// limit) rather than swallowing it — callers that need a resilient fallback
+// (the /projects page) catch this and serve the cached snapshot instead.
 export async function getProjects() {
   const res = await fetch(
     `https://api.github.com/users/${USER}/repos?per_page=100&sort=pushed&type=owner`,
     { headers: headers(), next: { revalidate: REVALIDATE } }
   );
-  if (!res.ok) return [];
+  if (!res.ok) throw new Error(`GitHub repos fetch failed: ${res.status}`);
 
   const repos = await res.json();
 
