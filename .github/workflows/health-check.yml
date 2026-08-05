@@ -13,8 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Query health endpoint
+        env:
+          HEALTH_CHECK_SECRET: ${{ secrets.HEALTH_CHECK_SECRET }}
         run: |
-          curl -sfL https://www.immu10.com/api/health -o health.json \
+          curl -sfL -H "x-health-secret: $HEALTH_CHECK_SECRET" https://www.immu10.com/api/health -o health.json \
             || echo '{"ok":false,"checks":{"fetch":{"ok":false,"error":true,"note":"health endpoint itself did not respond"}}}' > health.json
           cat health.json
 

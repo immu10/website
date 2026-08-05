@@ -50,6 +50,11 @@ async function checkGithub() {
 }
 
 export async function GET(request) {
+  const secret = process.env.HEALTH_CHECK_SECRET;
+  if (!secret || request.headers.get("x-health-secret") !== secret) {
+    return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+
   const origin = new URL(request.url).origin;
 
   const [spotifyNowPlaying, spotifyTop, steam, tmdb, github] = await Promise.all([
