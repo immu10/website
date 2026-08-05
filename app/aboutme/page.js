@@ -1,14 +1,6 @@
 // app/aboutme/page.js  ->  served at /aboutme
 
-import NowPlaying from "../components/showcase/NowPlaying";
-import TopTracks from "../components/showcase/TopTracks";
-import SteamGames from "../components/showcase/SteamGames";
-import ShowsMovies from "../components/showcase/ShowsMovies";
-import ManhwaList from "../components/showcase/ManhwaList";
-
-// Shared tile styling.
-const tile =
-  "flex flex-col gap-4 rounded-2xl bg-black/10 p-5 ring-1 ring-white/10 backdrop-blur-sm";
+import AboutMeShowcase from "./AboutMeShowcase";
 
 export default function AboutMe() {
   return (
@@ -38,32 +30,7 @@ export default function AboutMe() {
       </section>
 
       {/* ---------------- Showcase: 2x2 tiles ---------------- */}
-      <section className="grid w-full max-w-5xl items-start gap-6 sm:grid-cols-2">
-        {/* Music — left */}
-        <div className={tile}>
-          <h2 className="font-heading text-2xl head-white-pink">Music</h2>
-          <NowPlaying />
-          <TopTracks />
-        </div>
-
-        {/* Games — right */}
-        <div className={tile}>
-          <h2 className="font-heading text-2xl head-white-pink">Games</h2>
-          <SteamGames />
-        </div>
-
-        {/* Shows / Movies — left */}
-        <div className={tile}>
-          <h2 className="font-heading text-2xl head-white-pink">Shows / Movies</h2>
-          <ShowsMovies />
-        </div>
-
-        {/* Manhwas — right */}
-        <div className={tile}>
-          <h2 className="font-heading text-2xl head-white-pink">Manhwas</h2>
-          <ManhwaList />
-        </div>
-      </section>
+      <AboutMeShowcase />
 
       <a href="/home" className="font-medium underline underline-offset-4">
         ← Back to home

@@ -11,7 +11,7 @@ const WATCHLIST = [
   { q: "How to Train Your Dragon 2", type: "movie" }, // movie
 ];
 
-export default function ShowsMovies() {
+export default function ShowsMovies({ onError }) {
   const [items, setItems] = useState(null);
 
   useEffect(() => {
@@ -21,9 +21,13 @@ export default function ShowsMovies() {
         fetch(`/api/tmdb/search?q=${encodeURIComponent(w.q)}&type=${w.type}`)
           .then((r) => r.json())
           .then((d) => ({ ...d, fallback: w.q }))
-          .catch(() => ({ found: false, fallback: w.q }))
+          .catch(() => ({ found: false, fallback: w.q, error: true }))
       )
-    ).then((res) => alive && setItems(res));
+    ).then((res) => {
+      if (!alive) return;
+      setItems(res);
+      onError?.(res.some((it) => it.configured === false || it.error));
+    });
     return () => {
       alive = false;
     };

@@ -11,7 +11,7 @@ const PLACEHOLDERS = [
   { name: "Amet", appid: null },
 ];
 
-export default function SteamGames() {
+export default function SteamGames({ onError }) {
   const [games, setGames] = useState(null); // null = loading
 
   useEffect(() => {
@@ -21,8 +21,13 @@ export default function SteamGames() {
       .then((json) => {
         if (!alive) return;
         setGames(json.games?.length ? json.games : PLACEHOLDERS);
+        onError?.(json.configured === false || Boolean(json.error));
       })
-      .catch(() => alive && setGames(PLACEHOLDERS));
+      .catch(() => {
+        if (!alive) return;
+        setGames(PLACEHOLDERS);
+        onError?.(true);
+      });
     return () => {
       alive = false;
     };

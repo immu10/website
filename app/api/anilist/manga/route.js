@@ -30,7 +30,7 @@ export async function GET(request) {
       cache: "no-store",
     });
 
-    if (!res.ok) return Response.json({ found: false });
+    if (!res.ok) return Response.json({ found: false, error: true });
 
     const { data } = await res.json();
     const m = data?.Media;

@@ -27,7 +27,7 @@ export async function GET() {
       cache: "no-store",
     });
 
-    if (!res.ok) return Response.json({ configured: true, tracks: [] });
+    if (!res.ok) return Response.json({ configured: true, tracks: [], error: true });
 
     const data = await res.json();
     const tracks = (data.items || []).map((t) => ({

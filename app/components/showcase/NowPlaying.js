@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 
-export default function NowPlaying() {
+export default function NowPlaying({ onError }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
@@ -15,9 +15,15 @@ export default function NowPlaying() {
       try {
         const res = await fetch("/api/spotify/now-playing");
         const json = await res.json();
-        if (alive) setData(json);
+        if (alive) {
+          setData(json);
+          onError?.(json.configured === false || Boolean(json.error));
+        }
       } catch {
-        if (alive) setData({ isPlaying: false });
+        if (alive) {
+          setData({ isPlaying: false, error: true });
+          onError?.(true);
+        }
       }
     };
 

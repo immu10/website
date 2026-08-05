@@ -11,7 +11,7 @@ const LIST = [
   "Myst, Might, Mayhem",
 ];
 
-export default function ManhwaList() {
+export default function ManhwaList({ onError }) {
   const [items, setItems] = useState(null);
 
   useEffect(() => {
@@ -21,9 +21,13 @@ export default function ManhwaList() {
         fetch(`/api/anilist/manga?q=${encodeURIComponent(q)}`)
           .then((r) => r.json())
           .then((d) => ({ ...d, fallback: q }))
-          .catch(() => ({ found: false, fallback: q }))
+          .catch(() => ({ found: false, fallback: q, error: true }))
       )
-    ).then((res) => alive && setItems(res));
+    ).then((res) => {
+      if (!alive) return;
+      setItems(res);
+      onError?.(res.some((it) => it.error));
+    });
     return () => {
       alive = false;
     };

@@ -45,7 +45,7 @@ export async function GET() {
     })}`;
 
     const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return Response.json({ configured: true, games: [] });
+    if (!res.ok) return Response.json({ configured: true, games: [], error: true });
 
     const data = await res.json();
     const all = (data.response?.games || [])

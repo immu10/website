@@ -4,15 +4,23 @@
 
 import { useEffect, useState } from "react";
 
-export default function TopTracks() {
+export default function TopTracks({ onError }) {
   const [tracks, setTracks] = useState(null);
 
   useEffect(() => {
     let alive = true;
     fetch("/api/spotify/top")
       .then((r) => r.json())
-      .then((json) => alive && setTracks(json.tracks || []))
-      .catch(() => alive && setTracks([]));
+      .then((json) => {
+        if (!alive) return;
+        setTracks(json.tracks || []);
+        onError?.(json.configured === false || Boolean(json.error));
+      })
+      .catch(() => {
+        if (!alive) return;
+        setTracks([]);
+        onError?.(true);
+      });
     return () => {
       alive = false;
     };

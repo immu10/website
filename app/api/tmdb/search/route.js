@@ -32,7 +32,7 @@ export async function GET(request) {
     })}`;
 
     const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return Response.json({ found: false, configured: true });
+    if (!res.ok) return Response.json({ found: false, configured: true, error: true });
 
     const data = await res.json();
     // First result that actually has a poster.
