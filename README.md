@@ -13,8 +13,24 @@ Vercel at [immu10.com](https://immu10.com).
   - **Games** — Steam *most played* (live), with a couple of picks pinned.
   - **Shows / Movies** — posters via TMDB (covers anime, kdramas, movies).
   - **Manhwas** — covers via AniList (no key needed).
-- **/projects** — work-in-progress tiles (the next thing to build out).
+  - Any section whose data source is unconfigured or failing shows a small
+    ⚠ next to its heading, plus one banner if anything's off.
+- **/projects** — auto-pulled from GitHub (every public, owned, non-fork repo
+  with a README). Falls back to a cached snapshot with a warning banner if
+  the live GitHub fetch fails.
 - **/cv** — a custom PDF viewer for my CV, with download / open-in-tab.
+
+## Reliability
+
+- `/projects` fetches live from the GitHub API. If that fails (expired
+  token, rate limit, outage), it falls back to the last good snapshot in
+  `app/data/projects-snapshot.json` and shows a "showing cached version"
+  banner instead of an empty page.
+- `.github/workflows/refresh-projects-snapshot.yml` refreshes that
+  snapshot daily, only overwriting it when the fetch actually succeeds.
+- `.github/workflows/health-check.yml` polls `/api/health` every 6 hours
+  (GitHub token auth + each configured live widget) and opens a GitHub
+  issue — which emails the repo owner — if something's actually broken.
 
 ## Getting started
 
@@ -38,6 +54,7 @@ cp .env.local.example .env.local
 | `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` / `SPOTIFY_REFRESH_TOKEN` | Music | [Spotify dashboard](https://developer.spotify.com/dashboard); refresh token via `/api/spotify/login` |
 | `STEAM_API_KEY` / `STEAM_ID` | Games | [Steam Web API key](https://steamcommunity.com/dev/apikey) + your steamID64 (profile must be public) |
 | `TMDB_API_KEY` | Shows / Movies | [TMDB API settings](https://www.themoviedb.org/settings/api) ("API Key v3 auth") |
+| `GITHUB_TOKEN` | Projects | [GitHub tokens](https://github.com/settings/tokens) (classic, no scopes needed). Optional — without it you're on the 60 req/hr public limit instead of 5000/hr, and `/api/health` will flag it as unauthenticated. |
 
 AniList (Manhwas) needs no key. See `.env.local.example` for step-by-step notes.
 For production, add the same variables in **Vercel → Settings → Environment
