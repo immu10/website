@@ -73,10 +73,10 @@ export default async function Projects() {
                       ▶
                     </span>
                   </>
-                ) : p.screenshot ? (
+                ) : p.screenshots?.[0] ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
-                    src={p.screenshot}
+                    src={p.screenshots[0]}
                     alt={p.title}
                     className="absolute inset-0 h-full w-full object-cover"
                   />
@@ -91,11 +91,6 @@ export default async function Projects() {
                 <h2 className="font-heading text-2xl head-white-pink">
                   {p.title}
                 </h2>
-                {p.description && (
-                  <p className="font-desc text-lg text-sky-100">
-                    {p.description}
-                  </p>
-                )}
                 {p.tags.length > 0 && (
                   <div className="mt-1 flex flex-wrap justify-center gap-1.5">
                     {p.tags.map((t) => (

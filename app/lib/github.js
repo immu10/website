@@ -40,27 +40,28 @@ function youtubeId(md) {
   return m ? m[1] : null;
 }
 
-// First image found under a "## Screenshot" section, e.g.:
-//   ## Screenshot
-//   ![alt](docs/shot.png)
-// Returns the raw src (possibly relative — resolved to a full URL at render time).
-function screenshotImage(md) {
+// Every image found under a "## Screenshot(s)" section — including multiple
+// images packed on one line (e.g. a markdown table row), e.g.:
+//   ## Screenshots
+//   | ![a](docs/shot1.png) caption | ![b](docs/shot2.png) caption |
+// Returns an array of raw srcs, in order (possibly relative — resolved to
+// full URLs at render time). Empty array if there's no such section.
+function screenshotImages(md) {
   let inSection = false;
+  const found = [];
   for (const line of md.split("\n")) {
     const h = line.match(/^(#{1,6})\s+(.+?)\s*$/);
     if (h && h[1].length <= 2) {
       const title = h[2].toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
-      inSection = h[1].length === 2 && title === "screenshot";
+      inSection = h[1].length === 2 && (title === "screenshot" || title === "screenshots");
       continue;
     }
     if (inSection) {
-      const mdImg = line.match(/!\[[^\]]*\]\(([^)\s]+)/);
-      if (mdImg) return mdImg[1];
-      const htmlImg = line.match(/<img[^>]*\ssrc=["']([^"']+)["']/i);
-      if (htmlImg) return htmlImg[1];
+      for (const m of line.matchAll(/!\[[^\]]*\]\(([^)\s]+)/g)) found.push(m[1]);
+      for (const m of line.matchAll(/<img[^>]*\ssrc=["']([^"']+)["']/gi)) found.push(m[1]);
     }
   }
-  return null;
+  return found;
 }
 
 // A "## Live Demo" section, e.g.:
@@ -149,6 +150,24 @@ export async function getReadme(slug) {
   return res.text();
 }
 
+// True if the repo's root contains nothing but the README — a placeholder
+// standing in for closed-source work. Used to hide the "GitHub" link on the
+// detail page (there's no point sending visitors to browse an empty repo).
+async function isReadmeOnly(slug) {
+  const res = await fetch(`https://api.github.com/repos/${USER}/${slug}/contents`, {
+    headers: headers(),
+    next: { revalidate: REVALIDATE },
+  });
+  if (!res.ok) throw new Error(`GitHub contents fetch failed for ${slug}: ${res.status}`);
+  const items = await res.json();
+  if (!Array.isArray(items)) return false;
+  return (
+    items.length === 1 &&
+    items[0].type === "file" &&
+    /^readme(\.\w+)?$/i.test(items[0].name)
+  );
+}
+
 // All repos that qualify for the site, newest first.
 // Throws on a genuine GitHub API failure (bad/expired token, outage, rate
 // limit) rather than swallowing it — callers that need a resilient fallback
@@ -175,10 +194,13 @@ export async function getProjects() {
       const readme = await getReadme(r.name);
       if (!readme) return null; // no README -> not showcased
       const topics = (r.topics || []).filter((t) => t !== HIDE_TOPIC);
+      const readmeOnly = await isReadmeOnly(r.name);
       return {
         slug: r.name,
+        // Root has nothing but the README -> a placeholder for closed-source
+        // work; don't link out to a repo with nothing to see.
+        readmeOnly,
         title: firstHeading(readme) || prettify(r.name),
-        description: r.description || "",
         // README "## Tags" + GitHub topics + auto-detected course tags (de-duped).
         tags: [
           ...new Set([
@@ -193,8 +215,8 @@ export async function getProjects() {
         pushedAt: r.pushed_at,
         // YouTube video id (if the README links one) -> embed + tile thumbnail.
         video: youtubeId(readme),
-        // First image under a "## Screenshot" section (absolute URL), if any.
-        screenshot: absoluteRaw(r.name, screenshotImage(readme)),
+        // Every image under a "## Screenshot" section (absolute URLs).
+        screenshots: screenshotImages(readme).map((src) => absoluteRaw(r.name, src)),
         // "## Live Demo" section -> { url, note } -> button + note on the page.
         demo: liveDemo(readme),
       };
@@ -210,7 +232,7 @@ export async function getProjects() {
     if (video && demo) return 0;
     if (video) return 1;
     if (demo) return 2;
-    if (p.screenshot) return 3;
+    if (p.screenshots?.length) return 3;
     return 4;
   };
 
