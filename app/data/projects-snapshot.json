@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-08-05T12:20:01.449Z",
+  "generatedAt": "2026-08-14T02:56:34.134Z",
   "projects": [
     {
       "slug": "RemoteParser",
+      "readmeOnly": false,
       "title": "File Parser",
-      "description": "",
       "tags": [
         "Qt",
         "C++",
@@ -20,8 +20,8 @@
     },
     {
       "slug": "Fetcherbot-agentic-ROS",
+      "readmeOnly": false,
       "title": "Fetcherbot Agentic ROS",
-      "description": "",
       "tags": [
         "ROS",
         "Gazebo",
@@ -40,8 +40,8 @@
     },
     {
       "slug": "OnscreenTranslator",
+      "readmeOnly": false,
       "title": "OnscreenTranslator",
-      "description": "",
       "tags": [
         "LLM",
         "Qt",
@@ -58,8 +58,8 @@
     },
     {
       "slug": "AES-and-RSA-data-storage",
+      "readmeOnly": false,
       "title": "Secure Hospital Database",
-      "description": "",
       "tags": [
         "AES",
         "RSA",
@@ -80,8 +80,8 @@
     },
     {
       "slug": "RandomForest-Credit-Card-Fraud-Detection",
+      "readmeOnly": false,
       "title": "Credit Card Fraud Detection",
-      "description": "",
       "tags": [
         "ML",
         "RandomForest",
@@ -97,8 +97,8 @@
     },
     {
       "slug": "financeSummariser",
+      "readmeOnly": false,
       "title": "FinSight AI",
-      "description": "",
       "tags": [
         "PDF-parsing",
         "financial-analysis",
@@ -115,8 +115,8 @@
     },
     {
       "slug": "PDF-Summarization-Mistral",
+      "readmeOnly": false,
       "title": "DOCUMENT SUMMARIZATION",
-      "description": "",
       "tags": [
         "college project",
         "NLP"
@@ -130,9 +130,32 @@
       "demo": null
     },
     {
+      "slug": "gallery-sync",
+      "readmeOnly": true,
+      "title": "Gallery",
+      "tags": [
+        "Kotlin",
+        "Jetpack Compose",
+        "Rust",
+        "Tauri",
+        "React",
+        "TypeScript",
+        "WebSocket",
+        "TLS",
+        "SQLite"
+      ],
+      "homepage": null,
+      "htmlUrl": "https://github.com/immu10/gallery-sync",
+      "archived": false,
+      "pushedAt": "2026-08-14T02:56:06Z",
+      "video": null,
+      "screenshot": null,
+      "demo": null
+    },
+    {
       "slug": "PDF-Querying-FAISS",
+      "readmeOnly": false,
       "title": "PDF querying Faiss",
-      "description": "",
       "tags": [
         "RAG",
         "LangGraph",

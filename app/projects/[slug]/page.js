@@ -4,6 +4,7 @@
 import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import Carousel from "../../components/Carousel";
 import {
   getProjects,
   getProject,
@@ -84,10 +85,11 @@ export default async function ProjectPage({ params }) {
     "overview"
   );
 
-  // Media for the left card: a YouTube embed if the README links one, else the
-  // "## Screenshot" image if present. Drives the one-column vs two-column choice.
-  const screenshotSrc = project.screenshot ? fixImg(project.screenshot) : null;
-  const hasMedia = Boolean(project.video || screenshotSrc);
+  // Media for the left card: a YouTube embed if the README links one, else
+  // every "## Screenshot" image (as a carousel if there's more than one).
+  // Drives the one-column vs two-column choice.
+  const screenshotSrcs = (project.screenshots || []).map(fixImg);
+  const hasMedia = Boolean(project.video || screenshotSrcs.length);
 
   const media = project.video ? (
     <div className="aspect-video w-full overflow-hidden rounded-xl ring-1 ring-white/10">
@@ -100,25 +102,22 @@ export default async function ProjectPage({ params }) {
         allowFullScreen
       />
     </div>
-  ) : screenshotSrc ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={screenshotSrc}
-      alt={`${project.title} screenshot`}
-      className="w-full overflow-hidden rounded-xl ring-1 ring-white/10"
-    />
+  ) : screenshotSrcs.length ? (
+    <Carousel images={screenshotSrcs} alt={`${project.title} screenshot`} />
   ) : null;
 
   const footerLinks = (
     <div className="flex flex-col items-start gap-4">
-      <a
-        href={project.htmlUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="rounded-full bg-white/10 px-4 py-2 font-body text-sm text-white/80 ring-1 ring-white/10 backdrop-blur-sm transition-colors hover:bg-white/20"
-      >
-        Read the full README on GitHub ↗
-      </a>
+      {!project.readmeOnly && (
+        <a
+          href={project.htmlUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-full bg-white/10 px-4 py-2 font-body text-sm text-white/80 ring-1 ring-white/10 backdrop-blur-sm transition-colors hover:bg-white/20"
+        >
+          Read the full README on GitHub ↗
+        </a>
+      )}
       <a href="/projects" className="font-medium underline underline-offset-4">
         ← Projects
       </a>
@@ -150,11 +149,6 @@ export default async function ProjectPage({ params }) {
         <h1 className="font-heading head-white-pink text-4xl sm:text-5xl">
           {project.title}
         </h1>
-        {project.description && (
-          <p className="font-desc body-accent text-2xl sm:text-3xl">
-            {project.description}
-          </p>
-        )}
         <div className="flex flex-wrap items-center justify-center gap-2">
           {project.tags.map((t) => (
             <span
@@ -164,14 +158,16 @@ export default async function ProjectPage({ params }) {
               {t}
             </span>
           ))}
-          <a
-            href={project.htmlUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-full bg-white/10 px-3 py-1 font-body text-xs text-white/70 hover:bg-white/20"
-          >
-            GitHub ↗
-          </a>
+          {!project.readmeOnly && (
+            <a
+              href={project.htmlUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full bg-white/10 px-3 py-1 font-body text-xs text-white/70 hover:bg-white/20"
+            >
+              GitHub ↗
+            </a>
+          )}
           {project.homepage && (
             <a
               href={project.homepage}

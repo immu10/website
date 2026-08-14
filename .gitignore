@@ -39,6 +39,9 @@ yarn-error.log*
 # local editor / agent config
 .claude/
 
+# local reference notes, not part of the shipped repo
+/rule.md
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

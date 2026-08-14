@@ -42,23 +42,22 @@ function youtubeId(md) {
   return m ? m[1] : null;
 }
 
-function screenshotImage(md) {
+function screenshotImages(md) {
   let inSection = false;
+  const found = [];
   for (const line of md.split("\n")) {
     const h = line.match(/^(#{1,6})\s+(.+?)\s*$/);
     if (h && h[1].length <= 2) {
       const title = h[2].toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
-      inSection = h[1].length === 2 && title === "screenshot";
+      inSection = h[1].length === 2 && (title === "screenshot" || title === "screenshots");
       continue;
     }
     if (inSection) {
-      const mdImg = line.match(/!\[[^\]]*\]\(([^)\s]+)/);
-      if (mdImg) return mdImg[1];
-      const htmlImg = line.match(/<img[^>]*\ssrc=["']([^"']+)["']/i);
-      if (htmlImg) return htmlImg[1];
+      for (const m of line.matchAll(/!\[[^\]]*\]\(([^)\s]+)/g)) found.push(m[1]);
+      for (const m of line.matchAll(/<img[^>]*\ssrc=["']([^"']+)["']/gi)) found.push(m[1]);
     }
   }
-  return null;
+  return found;
 }
 
 function liveDemo(md) {
@@ -127,6 +126,22 @@ async function getReadme(slug) {
   return res.text();
 }
 
+// True if the repo's root contains nothing but the README — a placeholder
+// standing in for closed-source work.
+async function isReadmeOnly(slug) {
+  const res = await fetch(`https://api.github.com/repos/${USER}/${slug}/contents`, {
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error(`contents fetch failed for ${slug}: ${res.status}`);
+  const items = await res.json();
+  if (!Array.isArray(items)) return false;
+  return (
+    items.length === 1 &&
+    items[0].type === "file" &&
+    /^readme(\.\w+)?$/i.test(items[0].name)
+  );
+}
+
 async function getProjects() {
   const res = await fetch(
     `https://api.github.com/users/${USER}/repos?per_page=100&sort=pushed&type=owner`,
@@ -144,17 +159,18 @@ async function getProjects() {
       const readme = await getReadme(r.name);
       if (!readme) return null;
       const topics = (r.topics || []).filter((t) => t !== HIDE_TOPIC);
+      const readmeOnly = await isReadmeOnly(r.name);
       return {
         slug: r.name,
+        readmeOnly,
         title: firstHeading(readme) || prettify(r.name),
-        description: r.description || "",
         tags: [...new Set([...readmeTags(readme), ...topics, ...courseTags(readme)])],
         homepage: r.homepage || null,
         htmlUrl: r.html_url,
         archived: r.archived,
         pushedAt: r.pushed_at,
         video: youtubeId(readme),
-        screenshot: absoluteRaw(r.name, screenshotImage(readme)),
+        screenshots: screenshotImages(readme).map((src) => absoluteRaw(r.name, src)),
         demo: liveDemo(readme),
       };
     })
@@ -166,7 +182,7 @@ async function getProjects() {
     if (video && demo) return 0;
     if (video) return 1;
     if (demo) return 2;
-    if (p.screenshot) return 3;
+    if (p.screenshots?.length) return 3;
     return 4;
   };
 
