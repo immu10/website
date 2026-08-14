@@ -7,10 +7,14 @@
 // one screenshot.
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 export default function Carousel({ images, alt }) {
   const [index, setIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  // Portal target isn't available during SSR; only render it once mounted.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (images.length <= 1 || lightboxOpen) return;
@@ -36,7 +40,7 @@ export default function Carousel({ images, alt }) {
 
   if (images.length === 0) return null;
 
-  const lightbox = lightboxOpen && (
+  const lightbox = mounted && lightboxOpen && createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
       onClick={() => setLightboxOpen(false)}
@@ -100,7 +104,8 @@ export default function Carousel({ images, alt }) {
           </div>
         </>
       )}
-    </div>
+    </div>,
+    document.body
   );
 
   if (images.length === 1) {
