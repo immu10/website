@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T02:56:34.134Z",
+  "generatedAt": "2026-08-16T06:18:47.198Z",
   "projects": [
     {
       "slug": "RemoteParser",
@@ -15,7 +15,7 @@
       "archived": false,
       "pushedAt": "2026-06-17T22:41:43Z",
       "video": "C4w6T1Z4hro",
-      "screenshot": null,
+      "screenshots": [],
       "demo": null
     },
     {
@@ -35,7 +35,7 @@
       "archived": false,
       "pushedAt": "2026-06-17T18:57:40Z",
       "video": "pmbQZr9Oym0",
-      "screenshot": null,
+      "screenshots": [],
       "demo": null
     },
     {
@@ -53,7 +53,7 @@
       "archived": false,
       "pushedAt": "2026-06-17T18:55:28Z",
       "video": "WGv9_rZozUE",
-      "screenshot": null,
+      "screenshots": [],
       "demo": null
     },
     {
@@ -72,11 +72,43 @@
       "archived": false,
       "pushedAt": "2026-06-17T21:32:38Z",
       "video": null,
-      "screenshot": "https://raw.githubusercontent.com/immu10/AES-and-RSA-data-storage/HEAD/image.png",
+      "screenshots": [
+        "https://raw.githubusercontent.com/immu10/AES-and-RSA-data-storage/HEAD/image.png"
+      ],
       "demo": {
         "url": "https://aes-and-rsa-immu10.streamlit.app/",
         "note": "**Demo login (Admin):** username `admin` · password `admin`"
       }
+    },
+    {
+      "slug": "gallery-sync",
+      "readmeOnly": false,
+      "title": "Gallery Sync",
+      "tags": [
+        "Kotlin",
+        "Jetpack Compose",
+        "Rust",
+        "Tauri",
+        "React",
+        "TypeScript",
+        "WebSocket",
+        "TLS",
+        "SQLite"
+      ],
+      "homepage": null,
+      "htmlUrl": "https://github.com/immu10/gallery-sync",
+      "archived": false,
+      "pushedAt": "2026-08-14T03:32:56Z",
+      "video": null,
+      "screenshots": [
+        "https://raw.githubusercontent.com/immu10/gallery-sync/HEAD/screenshots/image1.png",
+        "https://raw.githubusercontent.com/immu10/gallery-sync/HEAD/screenshots/image2.png",
+        "https://raw.githubusercontent.com/immu10/gallery-sync/HEAD/screenshots/image3.png",
+        "https://raw.githubusercontent.com/immu10/gallery-sync/HEAD/screenshots/image4.png",
+        "https://raw.githubusercontent.com/immu10/gallery-sync/HEAD/screenshots/image5.png",
+        "https://raw.githubusercontent.com/immu10/gallery-sync/HEAD/screenshots/image6.png"
+      ],
+      "demo": null
     },
     {
       "slug": "RandomForest-Credit-Card-Fraud-Detection",
@@ -92,7 +124,9 @@
       "archived": false,
       "pushedAt": "2026-06-17T23:26:52Z",
       "video": null,
-      "screenshot": "https://raw.githubusercontent.com/immu10/RandomForest-Credit-Card-Fraud-Detection/HEAD/image.png",
+      "screenshots": [
+        "https://raw.githubusercontent.com/immu10/RandomForest-Credit-Card-Fraud-Detection/HEAD/image.png"
+      ],
       "demo": null
     },
     {
@@ -110,7 +144,9 @@
       "archived": false,
       "pushedAt": "2026-06-17T23:13:28Z",
       "video": null,
-      "screenshot": "https://raw.githubusercontent.com/immu10/financeSummariser/HEAD/image.png",
+      "screenshots": [
+        "https://raw.githubusercontent.com/immu10/financeSummariser/HEAD/image.png"
+      ],
       "demo": null
     },
     {
@@ -126,30 +162,9 @@
       "archived": false,
       "pushedAt": "2026-06-17T22:44:43Z",
       "video": null,
-      "screenshot": "https://raw.githubusercontent.com/immu10/PDF-Summarization-Mistral/HEAD/image.png",
-      "demo": null
-    },
-    {
-      "slug": "gallery-sync",
-      "readmeOnly": true,
-      "title": "Gallery",
-      "tags": [
-        "Kotlin",
-        "Jetpack Compose",
-        "Rust",
-        "Tauri",
-        "React",
-        "TypeScript",
-        "WebSocket",
-        "TLS",
-        "SQLite"
+      "screenshots": [
+        "https://raw.githubusercontent.com/immu10/PDF-Summarization-Mistral/HEAD/image.png"
       ],
-      "homepage": null,
-      "htmlUrl": "https://github.com/immu10/gallery-sync",
-      "archived": false,
-      "pushedAt": "2026-08-14T02:56:06Z",
-      "video": null,
-      "screenshot": null,
       "demo": null
     },
     {
@@ -166,7 +181,7 @@
       "archived": false,
       "pushedAt": "2026-06-17T17:02:00Z",
       "video": null,
-      "screenshot": null,
+      "screenshots": [],
       "demo": null
     }
   ]
