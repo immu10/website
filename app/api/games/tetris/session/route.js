@@ -28,8 +28,12 @@ export async function POST(request) {
   }
 
   const token = randomUUID();
+  // ip recorded for the owner's own moderation use only (viewed directly in
+  // the Upstash console, never returned by any API response) — same
+  // treatment as the entry-level ip in the score route.
   await getRedis().setex(`tetris:session:${token}`, SESSION_TTL_SECONDS, {
     issuedAt: Date.now(),
+    ip,
   });
 
   return Response.json({ token });
