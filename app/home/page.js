@@ -41,7 +41,7 @@ export default function Home() {
        for a role in Software Engineering .
       </p>
 
-      {/* three buttons (first two are placeholders for now; third is the CV) */}
+      {/* nav buttons */}
       <div className="flex flex-wrap items-center justify-center gap-4">
         <a
           href="/aboutme"
@@ -54,6 +54,12 @@ export default function Home() {
           className="rounded-full bg-black px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white/10 dark:text-white dark:ring-1 dark:ring-white/15 dark:backdrop-blur-sm dark:hover:bg-white/20"
         >
           Projects
+        </a>
+        <a
+          href="/games"
+          className="rounded-full bg-black px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white/10 dark:text-white dark:ring-1 dark:ring-white/15 dark:backdrop-blur-sm dark:hover:bg-white/20"
+        >
+          Minigames
         </a>
         <a
           href="/cv"
