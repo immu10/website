@@ -11,6 +11,7 @@ import {
   dbConfigured,
 } from "../../../../lib/auth";
 import { checkRateLimit } from "../../../../lib/ratelimit";
+import { getClientIp } from "../../../../lib/ip";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +20,7 @@ export async function POST(request) {
     return Response.json({ error: "not configured" }, { status: 503 });
   }
 
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(request);
   const allowed = await checkRateLimit("auth-register", ip, 5, "10 m");
   if (!allowed) {
     return Response.json(
