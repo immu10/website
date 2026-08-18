@@ -13,6 +13,7 @@ import { getRedis, redisConfigured } from "../../../../lib/redis";
 import { validateName } from "../../../../lib/profanity";
 import { getSession } from "../../../../lib/auth";
 import { checkRateLimit } from "../../../../lib/ratelimit";
+import { getClientIp } from "../../../../lib/ip";
 import {
   MIN_ELAPSED_SECONDS,
   maxPlausibleScore,
@@ -29,8 +30,7 @@ export async function POST(request) {
     return Response.json({ error: "not configured" }, { status: 503 });
   }
 
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(request);
   const allowed = await checkRateLimit("tetris-score", ip, 20, "1 m");
   if (!allowed) {
     return Response.json(
