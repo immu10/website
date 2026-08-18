@@ -10,11 +10,22 @@ import AuthWidget from "../AuthWidget";
 
 export const metadata = { title: "Leaderboard — immu10" };
 
-export default async function LeaderboardPage({ searchParams }) {
-  const { game: requestedGame } = await searchParams;
-  const game = GAMES.find((g) => g.slug === requestedGame) ?? GAMES[0];
+const PAGE_SIZE = 20;
 
-  const { entries, configured } = await getLeaderboard(game.slug, 20);
+export default async function LeaderboardPage({ searchParams }) {
+  const { game: requestedGame, page: pageParam } = await searchParams;
+  const game = GAMES.find((g) => g.slug === requestedGame) ?? GAMES[0];
+  const page = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
+
+  const start = (page - 1) * PAGE_SIZE;
+  // Fetch one extra entry past this page so we can tell whether a next page
+  // exists, without a separate count query.
+  const { entries: fetched, configured } = await getLeaderboard(
+    game.slug,
+    start + PAGE_SIZE + 1
+  );
+  const entries = fetched.slice(start, start + PAGE_SIZE);
+  const hasNextPage = fetched.length > start + PAGE_SIZE;
 
   return (
     <main className="flex flex-1 flex-col items-center gap-8 p-8">
@@ -54,7 +65,7 @@ export default async function LeaderboardPage({ searchParams }) {
               >
                 <span className="flex items-center gap-2 truncate text-white/90">
                   <span className="w-6 shrink-0 text-right text-white/40">
-                    {i + 1}
+                    {start + i + 1}
                   </span>
                   <span className="truncate">{entry.name}</span>
                   {entry.guest && (
@@ -71,6 +82,15 @@ export default async function LeaderboardPage({ searchParams }) {
           </ol>
         )}
       </div>
+
+      {hasNextPage && (
+        <a
+          href={`/games/leaderboard?game=${game.slug}&page=${page + 1}`}
+          className="font-medium underline underline-offset-4"
+        >
+          Next page →
+        </a>
+      )}
 
       <a href="/games" className="font-medium underline underline-offset-4">
         ← Games

@@ -13,10 +13,15 @@ import {
   REMEMBER_ME_SECONDS,
   DEFAULT_SESSION_SECONDS,
 } from "./session";
+import { isProfane } from "./profanity";
 
 const USERNAME_PATTERN = /^[A-Za-z0-9_-]{3,20}$/;
 const MAX_PASSWORD_LENGTH = 72; // bcrypt silently truncates past this
 
+// Used by both login and register. Applying the profanity check here too
+// (not just at registration) is intentional: existing accounts with a
+// profane username are meant to be locked out along with new ones, not
+// grandfathered in.
 export function validateUsername(raw) {
   const username = typeof raw === "string" ? raw.trim() : "";
   if (!USERNAME_PATTERN.test(username)) {
@@ -24,6 +29,9 @@ export function validateUsername(raw) {
       ok: false,
       reason: "3-20 characters: letters, numbers, - and _ only.",
     };
+  }
+  if (isProfane(username)) {
+    return { ok: false, reason: "Cmon this is on my portfolio." };
   }
   return { ok: true, username };
 }
