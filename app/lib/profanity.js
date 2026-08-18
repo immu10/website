@@ -13,6 +13,13 @@ filter.addWords("nig");
 
 const NAME_PATTERN = /^[A-Za-z0-9 _-]{1,16}$/;
 
+// Shared with validateUsername in auth.js — an account's username is used
+// as its leaderboard display name (see the score route), so it needs the
+// same profanity check as free-text guest names or it bypasses the filter.
+export function isProfane(text) {
+  return filter.isProfane(text);
+}
+
 // Returns { ok: true, name } or { ok: false, reason }.
 export function validateName(raw) {
   const name = typeof raw === "string" ? raw.trim() : "";
@@ -23,7 +30,7 @@ export function validateName(raw) {
   if (!NAME_PATTERN.test(name)) {
     return { ok: false, reason: "Letters, numbers, spaces, - and _ only." };
   }
-  if (filter.isProfane(name)) {
+  if (isProfane(name)) {
     return { ok: false, reason: "Cmon this is on my portfolio." };
   }
 
