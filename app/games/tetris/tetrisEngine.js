@@ -86,6 +86,11 @@ export function rotateMatrix(matrix) {
   return matrix[0].map((_, i) => matrix.map((row) => row[i]).reverse());
 }
 
+export function rotateMatrixCCW(matrix) {
+  const n = matrix.length;
+  return matrix[0].map((_, i) => matrix.map((row) => row[n - 1 - i]));
+}
+
 export function spawnPosition(matrix) {
   return { x: Math.floor((COLS - matrix[0].length) / 2), y: 0 };
 }

@@ -9,6 +9,7 @@ import {
   createEmptyBoard,
   makeBag,
   rotateMatrix,
+  rotateMatrixCCW,
   spawnPosition,
   collides,
   merge,
@@ -72,6 +73,7 @@ export default function TetrisGame() {
   const [gameOver, setGameOver] = useState(false);
   const [started, setStarted] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [showDesktopDpad, setShowDesktopDpad] = useState(false);
 
   // Leaderboard: sessionTokenRef is minted fresh per game (see startGame)
   // and redeemed once on submit — see /api/games/tetris/score for why.
@@ -292,10 +294,11 @@ export default function TetrisGame() {
     return true;
   }, [draw]);
 
-  const tryRotate = useCallback(() => {
+  const tryRotate = useCallback((direction = "cw") => {
     const s = stateRef.current;
     if (!s.running || s.gameOver || s.current === "O") return;
-    const rotated = rotateMatrix(s.matrix);
+    const rotated =
+      direction === "ccw" ? rotateMatrixCCW(s.matrix) : rotateMatrix(s.matrix);
     // Simple wall kick: try the raw rotation, then nudge left/right a cell.
     for (const dx of [0, -1, 1, -2, 2]) {
       const newPos = { x: s.pos.x + dx, y: s.pos.y };
@@ -431,16 +434,28 @@ export default function TetrisGame() {
       }
       switch (e.key) {
         case "ArrowLeft":
+        case "a":
+        case "A":
           tryMove(-1, 0);
           break;
         case "ArrowRight":
+        case "d":
+        case "D":
           tryMove(1, 0);
           break;
         case "ArrowDown":
+        case "s":
+        case "S":
           softDrop();
           break;
         case "ArrowUp":
-          tryRotate();
+        case "w":
+        case "W":
+          tryRotate("cw");
+          break;
+        case "q":
+        case "Q":
+          tryRotate("ccw");
           break;
         case " ":
           hardDrop();
@@ -562,25 +577,33 @@ export default function TetrisGame() {
           )}
         </div>
 
-        {/* Touch D-pad — phones/small screens only. Kept in the same column
-            as the board so it stays directly under it even if the side
-            panel wraps below on narrow/zoomed layouts. Sized to its own
-            content (not tied to the board's pixel width) so it neither
-            squishes when the board is small nor spreads its edges off-screen
-            when the board is huge — `mx-auto` centers it under the board
-            independently either way. */}
+        {/* Touch D-pad — shown on phones/small screens always, and on
+            larger screens when the player opts in via the toggle below.
+            Kept in the same column as the board so it stays directly under
+            it even if the side panel wraps below on narrow/zoomed layouts.
+            Sized to its own content (not tied to the board's pixel width)
+            so it neither squishes when the board is small nor spreads its
+            edges off-screen when the board is huge — `mx-auto` centers it
+            under the board independently either way. */}
         <div
-          className="mx-auto flex shrink-0 items-center sm:hidden"
+          className={`mx-auto flex shrink-0 items-center ${showDesktopDpad ? "" : "sm:hidden"}`}
           style={{ gap: padGap * 2 }}
         >
           <div
             className="grid shrink-0 grid-cols-3 grid-rows-2"
             style={{ gap: padGap }}
           >
-            <div />
             <button
-              onClick={tryRotate}
-              aria-label="Rotate"
+              onClick={() => tryRotate("ccw")}
+              aria-label="Rotate counterclockwise"
+              style={{ width: padBtn, height: padBtn }}
+              className="col-start-1 row-start-1 shrink-0 touch-manipulation rounded-full bg-white/10 text-xl text-white ring-1 ring-white/15 backdrop-blur-sm active:bg-white/25"
+            >
+              ⟲
+            </button>
+            <button
+              onClick={() => tryRotate("cw")}
+              aria-label="Rotate clockwise"
               style={{ width: padBtn, height: padBtn }}
               className="col-start-2 row-start-1 shrink-0 touch-manipulation rounded-full bg-white/10 text-xl text-white ring-1 ring-white/15 backdrop-blur-sm active:bg-white/25"
             >
@@ -692,8 +715,16 @@ export default function TetrisGame() {
           />
         </div>
 
+          <button
+            onClick={() => setShowDesktopDpad((prev) => !prev)}
+            className="hidden items-center justify-between text-xs uppercase tracking-wide text-white/50 underline underline-offset-2 hover:text-white/80 sm:flex"
+          >
+            {showDesktopDpad ? "Hide D-pad" : "Show D-pad"}
+          </button>
+
           <p className="hidden text-xs text-white/40 sm:block">
-            ← → move · ↓ soft drop · ↑ rotate · space hard drop · P pause
+            ← → / A D move · ↓ / S soft drop · ↑ / W rotate CW · Q rotate CCW
+            · space hard drop · P pause
           </p>
 
           <div>
