@@ -1,15 +1,23 @@
 "use client";
 // Login/register/logout widget — only ever rendered under /games (see
-// app/games/page.js), never in the main site nav. When logged out, this is
-// just a small trigger button; the form itself lives in a popup so it isn't
-// permanently taking up space on the page.
+// layout.js's AuthProvider), never in the main site nav. When logged out,
+// this is just a small trigger button; the form itself lives in a popup so
+// it isn't permanently taking up space on the page. Reads its open/closed
+// state from the shared AuthContext so other components (e.g. Tetris's
+// game-over prompt) can open this exact same modal.
 
 import { useState } from "react";
-import { useAuth } from "./useAuth";
+import { useAuth } from "./AuthContext";
 
 export default function AuthWidget() {
-  const { loggedIn, username, loading, refresh } = useAuth();
-  const [open, setOpen] = useState(false);
+  const {
+    loggedIn,
+    username,
+    loading,
+    refresh,
+    modalOpen: open,
+    setModalOpen: setOpen,
+  } = useAuth();
   const [mode, setMode] = useState("login"); // login | register
   const [form, setForm] = useState({
     username: "",
