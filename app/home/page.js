@@ -9,7 +9,7 @@ export default function Home() {
 
       {/* Credit the artist who made the Peeper sprite sheet */}
       <a
-        href="https://instagram.com/artofjpw"
+        href="https://instagram.com/W_jp_m"
         target="_blank"
         rel="noopener noreferrer"
         className="fixed bottom-4 right-4 z-50 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 font-body text-sm text-white/80 ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20"
@@ -28,7 +28,7 @@ export default function Home() {
             imageRendering: "pixelated",
           }}
         />
-        Peeper maker — @artofjpw
+        Peeper maker — @W_jp_m
       </a>
       {/* heading: white in light mode, pink in dark mode */}
       <h1 className="font-heading head-white-pink text-4xl sm:text-6xl">
