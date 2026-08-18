@@ -6,6 +6,7 @@ import { getLeaderboard } from "../../lib/leaderboard";
 import { GAMES } from "../gamesList";
 import GameSelect from "./GameSelect";
 import GuestIcon from "../GuestIcon";
+import AuthWidget from "../AuthWidget";
 
 export const metadata = { title: "Leaderboard — immu10" };
 
@@ -21,6 +22,7 @@ export default async function LeaderboardPage({ searchParams }) {
         <a href="/games" className="font-medium underline underline-offset-4">
           ← Games
         </a>
+        <AuthWidget />
       </div>
 
       <h1 className="font-heading head-white-pink text-4xl sm:text-5xl">
@@ -28,6 +30,11 @@ export default async function LeaderboardPage({ searchParams }) {
       </h1>
 
       <GameSelect games={GAMES} selected={game.slug} />
+
+      <p className="-mt-4 text-center font-body text-xs text-white/40">
+        New scores can take up to a minute to show up here — don&apos;t worry,
+        it&apos;s not lost.
+      </p>
 
       <div className="w-full max-w-md rounded-2xl bg-black/20 p-5 ring-1 ring-white/10 backdrop-blur-sm">
         {!configured ? (

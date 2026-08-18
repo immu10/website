@@ -16,7 +16,7 @@ import {
   scoreForLines,
   dropIntervalForLevel,
 } from "./tetrisEngine";
-import { useAuth } from "../useAuth";
+import { useAuth } from "../AuthContext";
 import GuestIcon from "../GuestIcon";
 
 const MIN_CELL = 14;
@@ -80,7 +80,7 @@ export default function TetrisGame() {
   const [submitState, setSubmitState] = useState("idle"); // idle | submitting | submitted | error
   const [submitError, setSubmitError] = useState("");
   const [leaderboard, setLeaderboard] = useState([]);
-  const { loggedIn, username } = useAuth();
+  const { loggedIn, username, setModalOpen: setAuthModalOpen } = useAuth();
 
   useEffect(() => {
     // localStorage is unavailable during SSR/first render, so this has to
@@ -498,14 +498,30 @@ export default function TetrisGame() {
                           only updates if it beats your best.
                         </p>
                       ) : (
-                        <input
-                          type="text"
-                          value={playerName}
-                          onChange={(e) => setPlayerName(e.target.value)}
-                          placeholder="Name"
-                          maxLength={16}
-                          className="w-32 rounded-full bg-white/10 px-3 py-1 text-center text-sm text-white ring-1 ring-white/20 placeholder:text-white/40 focus:outline-none"
-                        />
+                        <>
+                          <p className="max-w-[12rem] text-center text-xs text-white/50">
+                            Log in to save this to an account, or submit as a
+                            guest below.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setAuthModalOpen(true)}
+                            className="rounded-full bg-white/10 px-4 py-1.5 text-sm font-medium text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20"
+                          >
+                            Log in
+                          </button>
+                          <div className="my-1 text-[0.65rem] uppercase tracking-wide text-white/30">
+                            or continue as guest
+                          </div>
+                          <input
+                            type="text"
+                            value={playerName}
+                            onChange={(e) => setPlayerName(e.target.value)}
+                            placeholder="Name"
+                            maxLength={16}
+                            className="w-32 rounded-full bg-white/10 px-3 py-1 text-center text-sm text-white ring-1 ring-white/20 placeholder:text-white/40 focus:outline-none"
+                          />
+                        </>
                       )}
                       <button
                         onClick={submitScore}
@@ -687,6 +703,9 @@ export default function TetrisGame() {
             >
               Leaderboard
             </Link>
+            <p className="text-[0.65rem] text-white/30">
+              Can take up to a minute to update.
+            </p>
             {leaderboard.length === 0 ? (
               <p className="mt-1 text-xs text-white/40">No scores yet.</p>
             ) : (
