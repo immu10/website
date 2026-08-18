@@ -23,10 +23,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/refresh-projects-snapshot.mjs
 
-      - name: Commit if changed
+      - name: Commit if projects actually changed
         run: |
-          if git diff --quiet -- app/data/projects-snapshot.json; then
-            echo "No changes."
+          # The snapshot embeds a generatedAt timestamp that differs on every
+          # run, so a plain `git diff` always looks changed. Compare just the
+          # `projects` field against what's already committed instead, and
+          # only commit when the real content differs.
+          OLD=$(git show HEAD:app/data/projects-snapshot.json 2>/dev/null | jq -S '.projects' || echo '[]')
+          NEW=$(jq -S '.projects' app/data/projects-snapshot.json)
+          if [ "$OLD" = "$NEW" ]; then
+            echo "No real changes (only generatedAt differs) — skipping commit."
+            git checkout -- app/data/projects-snapshot.json
             exit 0
           fi
           git config user.name "github-actions[bot]"
