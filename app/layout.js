@@ -11,6 +11,7 @@ import { Analytics } from "@vercel/analytics/next";
 import CausticsCanvas from "./components/background/CausticsCanvas";
 import BubbleField from "./components/background/BubbleField";
 import DarkToggle from "./components/DarkToggle";
+import EnvWarningBadge from "./components/EnvWarningBadge";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -83,6 +84,7 @@ export default function RootLayout({ children }) {
         <div className="dark-overlay" />
 
         <DarkToggle />
+        <EnvWarningBadge />
         {children}
         <Analytics />
       </body>
