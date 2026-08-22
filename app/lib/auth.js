@@ -90,13 +90,19 @@ export async function setSessionCookie(userId, username, rememberMe) {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
-    path: "/games",
+    // Scoped to /api/games, not /games — every reader of this cookie
+    // (getSession(), called only from /api/games/auth/me and
+    // /api/games/tetris/score) lives under /api/games. A cookie scoped to
+    // /games is never sent to /api/games/* at all — /api doesn't share a
+    // path prefix with /games — so the session was silently invisible to
+    // every route that needed it.
+    path: "/api/games",
     maxAge,
   });
 }
 
 export async function clearSessionCookie() {
-  (await cookies()).delete({ name: SESSION_COOKIE, path: "/games" });
+  (await cookies()).delete({ name: SESSION_COOKIE, path: "/api/games" });
 }
 
 // Returns { userId, username } or null. dbConfigured() isn't checked here —
