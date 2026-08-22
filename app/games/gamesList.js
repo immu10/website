@@ -7,5 +7,6 @@ export const GAMES = [
     slug: "tetris",
     title: "Tetris",
     description: "The block game.",
+    thumbnail: "/games/tetris-thumb.png",
   },
 ];
