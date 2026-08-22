@@ -192,7 +192,12 @@ export default function BeatDashGame() {
     const loop = (time) => {
       const s = stateRef.current;
       if (s.phase === "playing") {
-        const delta = (time - (s.lastFrameTime || time)) / 1000;
+        // Capped so a stutter (backgrounded tab, GC pause, slow device)
+        // can't produce one oversized frame step that tunnels the player
+        // through a block's 36px height between two sampled positions —
+        // a real bug, not intended leniency: it read as "the cube didn't
+        // kill me, it just let a double jump through."
+        const delta = Math.min((time - (s.lastFrameTime || time)) / 1000, 1 / 30);
         s.lastFrameTime = time;
 
         s.playerVy += GRAVITY * delta;

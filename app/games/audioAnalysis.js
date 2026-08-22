@@ -203,27 +203,30 @@ export function mulberry32(seed) {
   };
 }
 
-// One gap-obstacle per onset, gap position driven by the seeded RNG rather
-// than true randomness, so the same (onsets, seed) pair always lays out the
-// identical course. Gap height shrinks (harder) in higher-energy sections
-// when an energy envelope is supplied — a quiet intro stays forgiving, a
-// dense drop gets tighter, without needing per-obstacle hand-tuning.
+// One solid block-obstacle per onset, attached to either the top or bottom
+// edge of the canvas (never both — this is not a flappy-bird gap-pillar),
+// with the rest of the vertical space free to fly through. Side is driven by
+// the seeded RNG rather than true randomness, so the same (onsets, seed)
+// pair always lays out the identical course. Block size grows (harder) in
+// higher-energy sections when an energy envelope is supplied — a quiet
+// intro stays forgiving, a dense drop gets tighter, without needing
+// per-obstacle hand-tuning.
 //
-// Reachability: each gap's Y is rolled, then clamped to within
+// Reachability: each block's free-zone center is computed, then the chosen
+// side is only honored if that center is within
 // maxVerticalSpeed * (time since previous obstacle) * reachabilityMargin of
-// the previous gap's Y — otherwise two obstacles close together in time can
-// land gaps far enough apart vertically that no legal player movement can
-// get from one to the other, an unavoidable "impossible" obstacle rather
-// than a real difficulty spike. The margin leaves slack for reaction time
-// and for needing to reverse direction between two gaps.
+// the previous obstacle's free-zone center — otherwise two obstacles close
+// together in time could require flipping from hugging one edge to hugging
+// the other in less time than the player can physically move, an
+// unavoidable "impossible" obstacle rather than a real difficulty spike.
+// When the roll isn't reachable, the obstacle just stays on the same side as
+// the previous one instead. The margin leaves slack for reaction time.
 export function generateObstacles(
   onsets,
   seed,
   {
-    minGapY = 60,
-    bottomMargin = 20,
-    maxGapHeight = 180,
-    minGapHeight = 100,
+    minBlockSize = 100,
+    maxBlockSize = 260,
     startBufferSeconds = 2,
     energyEnvelope = null,
     canvasHeight = 460,
@@ -232,34 +235,37 @@ export function generateObstacles(
   } = {}
 ) {
   const rand = mulberry32(seed);
-  let prevGapY = null;
+  let prevSide = null;
+  let prevTarget = null;
   let prevTime = null;
+
+  const targetFor = (side, blockSize) =>
+    side === "top" ? (blockSize + canvasHeight) / 2 : (canvasHeight - blockSize) / 2;
 
   return onsets
     .filter((time) => time >= startBufferSeconds)
     .map((time) => {
       const energy = energyEnvelope ? energyAt(energyEnvelope, time) : 0;
-      const gapHeight = maxGapHeight - energy * (maxGapHeight - minGapHeight);
-      const maxGapY = Math.max(minGapY, canvasHeight - bottomMargin - gapHeight);
+      const blockSize = minBlockSize + energy * (maxBlockSize - minBlockSize);
 
-      let lo = minGapY;
-      let hi = maxGapY;
-      if (prevGapY !== null && maxVerticalSpeed) {
+      let side = rand() < 0.5 ? "top" : "bottom";
+      let target = targetFor(side, blockSize);
+
+      if (prevSide !== null && maxVerticalSpeed) {
         const dt = time - prevTime;
         const maxDelta = maxVerticalSpeed * dt * reachabilityMargin;
-        lo = Math.max(minGapY, prevGapY - maxDelta);
-        hi = Math.min(maxGapY, prevGapY + maxDelta);
-        if (lo > hi) {
-          // Reachable window collapsed (shouldn't happen with sane speeds)
-          // — fall back to staying put rather than rolling an unreachable gap.
-          lo = hi = Math.max(minGapY, Math.min(maxGapY, prevGapY));
+        if (Math.abs(target - prevTarget) > maxDelta) {
+          // Flipping sides isn't reachable in time — stay put instead.
+          side = prevSide;
+          target = targetFor(side, blockSize);
         }
       }
 
-      const gapY = lo + rand() * (hi - lo);
-      prevGapY = gapY;
+      const blockY = side === "top" ? 0 : canvasHeight - blockSize;
+      prevSide = side;
+      prevTarget = target;
       prevTime = time;
-      return { time, gapY, gapHeight };
+      return { time, blockY, blockHeight: blockSize, side };
     });
 }
 
