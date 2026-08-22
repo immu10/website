@@ -9,7 +9,7 @@ const filter = new Filter();
 // "nig" — the full "nigger"/"nigga" spellings and l33t variants ARE
 // covered, this shorthand wasn't). Extend it here as gaps are found; a
 // word-list filter is inherently whack-a-mole, not a complete solution.
-filter.addWords("nig");
+filter.addWords("nig", "smegmanuel");
 
 const NAME_PATTERN = /^[A-Za-z0-9 _-]{1,16}$/;
 
