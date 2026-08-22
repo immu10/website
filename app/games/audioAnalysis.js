@@ -217,6 +217,18 @@ export function mulberry32(seed) {
 // time would require a slope steeper than the player can physically fly,
 // an unavoidable "impossible" tunnel wall rather than a real difficulty
 // spike. The margin leaves slack for reaction time.
+//
+// Break windows: fully open stretches with no walls at all — always one
+// covering the very start (the 3-2-1-GO countdown plus a couple seconds
+// after control handoff, via startBufferSeconds), then more spaced through
+// the rest of the track (every breakIntervalSeconds, when trackDuration is
+// given) so the course has breathing room instead of nonstop walls. Onsets
+// falling inside a break are simply skipped — no obstacle keyframe is
+// rolled for them — and the break's start/end get their own keyframes
+// spliced in afterward, frozen at whatever centerY the normal zigzag had
+// there (so nothing needs to "reach" anything — the walls just recede
+// off-canvas for the duration) but at a width wide enough that no wall is
+// ever visible regardless of centerY drift.
 export function generateTunnel(
   onsets,
   seed,
@@ -225,6 +237,9 @@ export function generateTunnel(
     maxWidth = 240,
     edgeMargin = 20,
     startBufferSeconds = 2,
+    trackDuration = null,
+    breakIntervalSeconds = 18,
+    breakDurationSeconds = 2.5,
     energyEnvelope = null,
     canvasHeight = 460,
     maxVerticalSpeed = null,
@@ -232,34 +247,60 @@ export function generateTunnel(
   } = {}
 ) {
   const rand = mulberry32(seed);
-  const keyframes = [{ time: 0, centerY: canvasHeight / 2, width: maxWidth }];
+
+  const breakWindows = [{ start: 0, end: startBufferSeconds }];
+  if (trackDuration) {
+    for (
+      let t = startBufferSeconds + breakIntervalSeconds;
+      t < trackDuration;
+      t += breakIntervalSeconds
+    ) {
+      breakWindows.push({ start: t, end: Math.min(trackDuration, t + breakDurationSeconds) });
+    }
+  }
+  const inAnyBreak = (time) => breakWindows.some((w) => time > w.start && time < w.end);
+
+  const keyframes = [];
+  let prevCenterY = canvasHeight / 2;
+  let prevTime = 0;
 
   for (const time of onsets) {
-    if (time < startBufferSeconds) continue;
+    if (time < startBufferSeconds || inAnyBreak(time)) continue;
     const energy = energyEnvelope ? energyAt(energyEnvelope, time) : 0;
     const width = maxWidth - energy * (maxWidth - minWidth);
 
-    const prev = keyframes[keyframes.length - 1];
     const lo = edgeMargin + width / 2;
     const hi = canvasHeight - edgeMargin - width / 2;
 
     let loBound = lo;
     let hiBound = hi;
     if (maxVerticalSpeed) {
-      const dt = time - prev.time;
+      const dt = time - prevTime;
       const maxDelta = maxVerticalSpeed * dt * reachabilityMargin;
-      loBound = Math.max(lo, prev.centerY - maxDelta);
-      hiBound = Math.min(hi, prev.centerY + maxDelta);
+      loBound = Math.max(lo, prevCenterY - maxDelta);
+      hiBound = Math.min(hi, prevCenterY + maxDelta);
       if (loBound > hiBound) {
         // Reachable window collapsed (shouldn't happen with sane speeds)
         // — fall back to staying put rather than rolling an impossible turn.
-        loBound = hiBound = Math.max(lo, Math.min(hi, prev.centerY));
+        loBound = hiBound = Math.max(lo, Math.min(hi, prevCenterY));
       }
     }
 
     const centerY = loBound + rand() * (hiBound - loBound);
     keyframes.push({ time, centerY, width });
+    prevCenterY = centerY;
+    prevTime = time;
   }
+
+  const OPEN_WIDTH = canvasHeight * 2; // guarantees no wall is visible regardless of centerY
+  const backboneCenterYAt = (t) =>
+    keyframes.length === 0 ? canvasHeight / 2 : sampleTunnel(keyframes, t).centerY;
+  for (const w of breakWindows) {
+    const centerY = backboneCenterYAt(w.start);
+    keyframes.push({ time: w.start, centerY, width: OPEN_WIDTH });
+    keyframes.push({ time: w.end, centerY, width: OPEN_WIDTH });
+  }
+  keyframes.sort((a, b) => a.time - b.time);
 
   return keyframes;
 }

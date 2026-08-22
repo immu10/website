@@ -47,12 +47,16 @@ export default function MusicRunnerGame() {
   const canvasRef = useRef(null);
   const audioRef = useRef(null);
   const stateRef = useRef(createInitialState());
+  const countdownTimeoutRef = useRef(null);
   const [phase, setPhase] = useState("idle");
   const [passedCount, setPassedCount] = useState(0);
   const [finalTime, setFinalTime] = useState(0);
   const [bpm, setBpm] = useState(null);
   const [beatMode, setBeatMode] = useState("onsets"); // onsets | grid
   const [autoplay, setAutoplay] = useState(false);
+  const [countdown, setCountdown] = useState(null); // 3 | 2 | 1 | "GO" | null
+
+  useEffect(() => () => clearTimeout(countdownTimeoutRef.current), []);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -127,6 +131,7 @@ export default function MusicRunnerGame() {
       energyEnvelope,
       canvasHeight: CANVAS_H,
       maxVerticalSpeed: V_SPEED,
+      trackDuration: buffer.duration,
     });
     ctx.close();
 
@@ -139,14 +144,38 @@ export default function MusicRunnerGame() {
     s.passedCount = 0;
     s.passedKeyframeIndex = 1;
     s.lastFrameTime = 0;
-    s.phase = "playing";
     setPassedCount(0);
-    setPhase("playing");
 
-    const audio = audioRef.current;
-    audio.currentTime = 0;
-    audio.play();
-  }, [beatMode]);
+    // Countdown happens inside the tunnel's opening break window (t=0
+    // onward is always open — see generateTunnel), so the player lands in
+    // open space the moment control is handed over, with a couple more
+    // seconds of it before real obstacles start.
+    s.phase = "countdown";
+    setPhase("countdown");
+    draw();
+
+    let count = 3;
+    setCountdown(count);
+    const runTick = () => {
+      count -= 1;
+      if (count > 0) {
+        setCountdown(count);
+        countdownTimeoutRef.current = setTimeout(runTick, 700);
+      } else {
+        setCountdown("GO");
+        countdownTimeoutRef.current = setTimeout(() => {
+          setCountdown(null);
+          if (!audioRef.current) return;
+          s.phase = "playing";
+          setPhase("playing");
+          s.lastFrameTime = 0;
+          audioRef.current.currentTime = 0;
+          audioRef.current.play();
+        }, 500);
+      }
+    };
+    countdownTimeoutRef.current = setTimeout(runTick, 700);
+  }, [beatMode, draw]);
 
   // Keyboard input — all four keys (up/down, W/S) map to the same single
   // action: flip current direction. Not hold-to-steer anymore.
@@ -241,7 +270,16 @@ export default function MusicRunnerGame() {
           className="rounded-lg bg-black/40 ring-1 ring-white/10"
         />
         {phase !== "playing" && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg bg-black/70 p-3 text-center">
+          <div
+            className={`absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg p-3 text-center ${
+              phase === "countdown" ? "" : "bg-black/70"
+            }`}
+          >
+            {phase === "countdown" && (
+              <p className="font-heading text-6xl text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]">
+                {countdown}
+              </p>
+            )}
             {phase === "idle" && (
               <>
                 <div className="flex items-center gap-2 rounded-full bg-white/5 p-1 ring-1 ring-white/10">
