@@ -12,7 +12,8 @@ import {
   detectOnsets,
   estimateTempo,
   computeEnergyEnvelope,
-  generateObstacles,
+  generateTunnel,
+  sampleTunnel,
   generateBeatGrid,
   estimatePhaseOffset,
 } from "../audioAnalysis";
@@ -24,21 +25,21 @@ const CANVAS_W = 700;
 const CANVAS_H = 460;
 const PLAYER_X = 120;
 const PLAYER_SIZE = 22;
-const OBSTACLE_HALF_WIDTH = 18;
-const SCROLL_SPEED = 220; // px/sec, drives obstacle screen position from audio.currentTime
+const TUNNEL_SAMPLE_STEP = 8; // px between rendered points along the tunnel wall curve
+const SCROLL_SPEED = 220; // px/sec, drives the tunnel's screen position from audio.currentTime
 
 const V_SPEED = 288; // px/sec constant vertical speed (was 320 — slowed 10%, direction flips felt too fast)
 
 function createInitialState() {
   return {
     phase: "idle", // idle | analyzing | playing | gameOver
-    obstacles: [],
+    keyframes: [],
     playerY: CANVAS_H / 2,
     playerVy: 0,
     direction: 1, // 1 = down, -1 = up — flipped by any of the mapped keys
     lastFrameTime: 0,
     passedCount: 0,
-    survivedTime: 0,
+    passedKeyframeIndex: 1, // index 0 is the synthetic t=0 keyframe, already "passed"
   };
 }
 
@@ -64,12 +65,31 @@ export default function MusicRunnerGame() {
     ctx.fillStyle = "#0b0b12";
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
-    // Obstacles — solid blocks hugging one edge, rest of the lane is free.
-    ctx.fillStyle = "#ff5e9c";
-    for (const ob of s.obstacles) {
-      const x = PLAYER_X + (ob.time - currentTime) * SCROLL_SPEED;
-      if (x < -OBSTACLE_HALF_WIDTH || x > CANVAS_W + OBSTACLE_HALF_WIDTH) continue;
-      ctx.fillRect(x - OBSTACLE_HALF_WIDTH, ob.blockY, OBSTACLE_HALF_WIDTH * 2, ob.blockHeight);
+    // Tunnel — continuous top/bottom walls zigzagging with the beat, player
+    // flies through the gap between them the whole way, not discrete pillars.
+    if (s.keyframes.length > 0) {
+      const trackTimeAt = (x) => currentTime + (x - PLAYER_X) / SCROLL_SPEED;
+      ctx.fillStyle = "#ff5e9c";
+
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      for (let x = 0; x <= CANVAS_W; x += TUNNEL_SAMPLE_STEP) {
+        const { centerY, width } = sampleTunnel(s.keyframes, trackTimeAt(x));
+        ctx.lineTo(x, centerY - width / 2);
+      }
+      ctx.lineTo(CANVAS_W, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(0, CANVAS_H);
+      for (let x = 0; x <= CANVAS_W; x += TUNNEL_SAMPLE_STEP) {
+        const { centerY, width } = sampleTunnel(s.keyframes, trackTimeAt(x));
+        ctx.lineTo(x, centerY + width / 2);
+      }
+      ctx.lineTo(CANVAS_W, CANVAS_H);
+      ctx.closePath();
+      ctx.fill();
     }
 
     // Player.
@@ -103,7 +123,7 @@ export default function MusicRunnerGame() {
           })
         : onsets;
 
-    const obstacles = generateObstacles(beatTimes, SEED, {
+    const keyframes = generateTunnel(beatTimes, SEED, {
       energyEnvelope,
       canvasHeight: CANVAS_H,
       maxVerticalSpeed: V_SPEED,
@@ -112,11 +132,12 @@ export default function MusicRunnerGame() {
 
     setBpm(tempo);
 
-    s.obstacles = obstacles;
+    s.keyframes = keyframes;
     s.playerY = CANVAS_H / 2;
     s.playerVy = 0;
     s.direction = 1;
     s.passedCount = 0;
+    s.passedKeyframeIndex = 1;
     s.lastFrameTime = 0;
     s.phase = "playing";
     setPassedCount(0);
@@ -153,49 +174,39 @@ export default function MusicRunnerGame() {
 
         const audio = audioRef.current;
         const currentTime = audio ? audio.currentTime : 0;
+        const sample = sampleTunnel(s.keyframes, currentTime);
 
         if (autoplay) {
-          // Steer toward the vertical center of the next un-passed
-          // obstacle's free zone — the same target the reachability
-          // safeguard in generateObstacles already guarantees is always
-          // reachable in time, so a bot doing nothing smarter than "move
-          // toward it" clears the course by construction. The bot sets
-          // direction directly rather than "pressing" the toggle key.
-          const next = s.obstacles.find((ob) => !ob._passed);
-          if (next) {
-            const target =
-              next.side === "top"
-                ? (next.blockHeight + CANVAS_H) / 2
-                : (CANVAS_H - next.blockHeight) / 2;
-            const deadzone = 6;
-            if (s.playerY > target + deadzone) s.direction = -1;
-            else if (s.playerY < target - deadzone) s.direction = 1;
-          }
+          // Steer toward the tunnel's current center — the reachability
+          // safeguard in generateTunnel already guarantees the slope
+          // between keyframes never exceeds V_SPEED, so a bot doing
+          // nothing smarter than "move toward center" clears the course
+          // by construction. The bot sets direction directly rather than
+          // "pressing" the toggle key.
+          const deadzone = 6;
+          if (s.playerY > sample.centerY + deadzone) s.direction = -1;
+          else if (s.playerY < sample.centerY - deadzone) s.direction = 1;
         }
 
         s.playerVy = s.direction * V_SPEED;
         s.playerY += s.playerVy * delta;
         s.playerY = Math.max(PLAYER_SIZE / 2, Math.min(CANVAS_H - PLAYER_SIZE / 2, s.playerY));
 
-        let newlyPassed = 0;
-        let collided = false;
-        for (const ob of s.obstacles) {
-          const x = PLAYER_X + (ob.time - currentTime) * SCROLL_SPEED;
-          const withinX = Math.abs(x - PLAYER_X) < OBSTACLE_HALF_WIDTH + PLAYER_SIZE / 2;
-          if (withinX) {
-            const playerTop = s.playerY - PLAYER_SIZE / 2;
-            const playerBottom = s.playerY + PLAYER_SIZE / 2;
-            const overlapsBlock =
-              playerTop < ob.blockY + ob.blockHeight && playerBottom > ob.blockY;
-            if (overlapsBlock) collided = true;
-          }
-          if (!ob._passed && x < PLAYER_X - OBSTACLE_HALF_WIDTH) {
-            ob._passed = true;
-            newlyPassed++;
-          }
+        const top = sample.centerY - sample.width / 2;
+        const bottom = sample.centerY + sample.width / 2;
+        const playerTop = s.playerY - PLAYER_SIZE / 2;
+        const playerBottom = s.playerY + PLAYER_SIZE / 2;
+        const collided = playerTop < top || playerBottom > bottom;
+
+        while (
+          s.passedKeyframeIndex < s.keyframes.length &&
+          s.keyframes[s.passedKeyframeIndex].time < currentTime
+        ) {
+          s.passedKeyframeIndex++;
         }
-        if (newlyPassed > 0) {
-          s.passedCount += newlyPassed;
+        const newPassedCount = s.passedKeyframeIndex - 1;
+        if (newPassedCount !== s.passedCount) {
+          s.passedCount = newPassedCount;
           setPassedCount(s.passedCount);
         }
 

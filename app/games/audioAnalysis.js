@@ -203,30 +203,27 @@ export function mulberry32(seed) {
   };
 }
 
-// One solid block-obstacle per onset, attached to either the top or bottom
-// edge of the canvas (never both — this is not a flappy-bird gap-pillar),
-// with the rest of the vertical space free to fly through. Side is driven by
-// the seeded RNG rather than true randomness, so the same (onsets, seed)
-// pair always lays out the identical course. Block size grows (harder) in
-// higher-energy sections when an energy envelope is supplied — a quiet
-// intro stays forgiving, a dense drop gets tighter, without needing
-// per-obstacle hand-tuning.
+// A continuous winding tunnel rather than discrete flappy-bird pillars: one
+// "keyframe" per onset, each a sharp direction-change point for the tunnel's
+// center line, connected to its neighbors by straight (linear-interpolated)
+// segments — the same zigzag shape you'd get plotting center-Y over time.
+// Tunnel width narrows (harder) in higher-energy sections when an energy
+// envelope is supplied — a quiet intro stays forgiving, a dense drop gets
+// tighter, without needing per-keyframe hand-tuning.
 //
-// Reachability: each block's free-zone center is computed, then the chosen
-// side is only honored if that center is within
-// maxVerticalSpeed * (time since previous obstacle) * reachabilityMargin of
-// the previous obstacle's free-zone center — otherwise two obstacles close
-// together in time could require flipping from hugging one edge to hugging
-// the other in less time than the player can physically move, an
-// unavoidable "impossible" obstacle rather than a real difficulty spike.
-// When the roll isn't reachable, the obstacle just stays on the same side as
-// the previous one instead. The margin leaves slack for reaction time.
-export function generateObstacles(
+// Reachability: each keyframe's center is rolled, then clamped to within
+// maxVerticalSpeed * (time since previous keyframe) * reachabilityMargin of
+// the previous keyframe's center — otherwise two keyframes close together in
+// time would require a slope steeper than the player can physically fly,
+// an unavoidable "impossible" tunnel wall rather than a real difficulty
+// spike. The margin leaves slack for reaction time.
+export function generateTunnel(
   onsets,
   seed,
   {
-    minBlockSize = 100,
-    maxBlockSize = 260,
+    minWidth = 110,
+    maxWidth = 240,
+    edgeMargin = 20,
     startBufferSeconds = 2,
     energyEnvelope = null,
     canvasHeight = 460,
@@ -235,38 +232,59 @@ export function generateObstacles(
   } = {}
 ) {
   const rand = mulberry32(seed);
-  let prevSide = null;
-  let prevTarget = null;
-  let prevTime = null;
+  const keyframes = [{ time: 0, centerY: canvasHeight / 2, width: maxWidth }];
 
-  const targetFor = (side, blockSize) =>
-    side === "top" ? (blockSize + canvasHeight) / 2 : (canvasHeight - blockSize) / 2;
+  for (const time of onsets) {
+    if (time < startBufferSeconds) continue;
+    const energy = energyEnvelope ? energyAt(energyEnvelope, time) : 0;
+    const width = maxWidth - energy * (maxWidth - minWidth);
 
-  return onsets
-    .filter((time) => time >= startBufferSeconds)
-    .map((time) => {
-      const energy = energyEnvelope ? energyAt(energyEnvelope, time) : 0;
-      const blockSize = minBlockSize + energy * (maxBlockSize - minBlockSize);
+    const prev = keyframes[keyframes.length - 1];
+    const lo = edgeMargin + width / 2;
+    const hi = canvasHeight - edgeMargin - width / 2;
 
-      let side = rand() < 0.5 ? "top" : "bottom";
-      let target = targetFor(side, blockSize);
-
-      if (prevSide !== null && maxVerticalSpeed) {
-        const dt = time - prevTime;
-        const maxDelta = maxVerticalSpeed * dt * reachabilityMargin;
-        if (Math.abs(target - prevTarget) > maxDelta) {
-          // Flipping sides isn't reachable in time — stay put instead.
-          side = prevSide;
-          target = targetFor(side, blockSize);
-        }
+    let loBound = lo;
+    let hiBound = hi;
+    if (maxVerticalSpeed) {
+      const dt = time - prev.time;
+      const maxDelta = maxVerticalSpeed * dt * reachabilityMargin;
+      loBound = Math.max(lo, prev.centerY - maxDelta);
+      hiBound = Math.min(hi, prev.centerY + maxDelta);
+      if (loBound > hiBound) {
+        // Reachable window collapsed (shouldn't happen with sane speeds)
+        // — fall back to staying put rather than rolling an impossible turn.
+        loBound = hiBound = Math.max(lo, Math.min(hi, prev.centerY));
       }
+    }
 
-      const blockY = side === "top" ? 0 : canvasHeight - blockSize;
-      prevSide = side;
-      prevTarget = target;
-      prevTime = time;
-      return { time, blockY, blockHeight: blockSize, side };
-    });
+    const centerY = loBound + rand() * (hiBound - loBound);
+    keyframes.push({ time, centerY, width });
+  }
+
+  return keyframes;
+}
+
+// Center-Y and width of the tunnel at an arbitrary track time, linearly
+// interpolated between the two surrounding keyframes — used both to render
+// the continuous wall shape and to collision-test the player's current
+// position, since both need the same "where is the tunnel right now" value.
+export function sampleTunnel(keyframes, time) {
+  if (time <= keyframes[0].time) return keyframes[0];
+  const last = keyframes[keyframes.length - 1];
+  if (time >= last.time) return last;
+
+  for (let i = 1; i < keyframes.length; i++) {
+    const b = keyframes[i];
+    if (time <= b.time) {
+      const a = keyframes[i - 1];
+      const t = (time - a.time) / (b.time - a.time);
+      return {
+        centerY: a.centerY + (b.centerY - a.centerY) * t,
+        width: a.width + (b.width - a.width) * t,
+      };
+    }
+  }
+  return last;
 }
 
 // Widest single ground obstacle a jump can clear, given the game's own jump
