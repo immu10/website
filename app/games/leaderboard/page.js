@@ -83,13 +83,25 @@ export default async function LeaderboardPage({ searchParams }) {
         )}
       </div>
 
-      {hasNextPage && (
-        <a
-          href={`/games/leaderboard?game=${game.slug}&page=${page + 1}`}
-          className="font-medium underline underline-offset-4"
-        >
-          Next page →
-        </a>
+      {(page > 1 || hasNextPage) && (
+        <div className="flex items-center gap-4">
+          {page > 1 && (
+            <a
+              href={`/games/leaderboard?game=${game.slug}&page=${page - 1}`}
+              className="font-medium underline underline-offset-4"
+            >
+              ← Previous page
+            </a>
+          )}
+          {hasNextPage && (
+            <a
+              href={`/games/leaderboard?game=${game.slug}&page=${page + 1}`}
+              className="font-medium underline underline-offset-4"
+            >
+              Next page →
+            </a>
+          )}
+        </div>
       )}
 
       <a href="/games" className="font-medium underline underline-offset-4">

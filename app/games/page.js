@@ -34,12 +34,27 @@ export default function Games() {
           <Link
             key={g.slug}
             href={`/games/${g.slug}`}
-            className="flex flex-col overflow-hidden rounded-2xl bg-black/20 p-5 text-center ring-1 ring-white/10 backdrop-blur-sm transition-transform hover:-translate-y-1"
+            className="flex flex-col overflow-hidden rounded-2xl bg-black/20 text-center ring-1 ring-white/10 backdrop-blur-sm transition-transform hover:-translate-y-1"
           >
-            <h2 className="font-heading text-2xl head-white-pink">{g.title}</h2>
-            <p className="mt-2 font-body text-sm text-white/70">
-              {g.description}
-            </p>
+            {g.thumbnail && (
+              // Board screenshots are tall/narrow (10:20) — object-contain
+              // in a fixed-height strip shows the whole board instead of
+              // cropping it down to a sliver the way object-cover would.
+              <div className="flex h-48 w-full items-center justify-center bg-black/30">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={g.thumbnail}
+                  alt=""
+                  className="h-full w-auto object-contain"
+                />
+              </div>
+            )}
+            <div className="p-5">
+              <h2 className="font-heading text-2xl head-white-pink">{g.title}</h2>
+              <p className="mt-2 font-body text-sm text-white/70">
+                {g.description}
+              </p>
+            </div>
           </Link>
         ))}
       </div>
