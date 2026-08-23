@@ -7,7 +7,6 @@ import {
   BOARD_H,
   DANGER_Y,
   INITIAL_LIVES,
-  WORDS_PER_LEVEL,
   pickWord,
   levelForWordsTyped,
   fallSpeedForLevel,
@@ -17,10 +16,6 @@ import {
 } from "./typewriterEngine";
 import { useAuth } from "@/app/games/AuthContext";
 import GuestIcon from "@/app/games/GuestIcon";
-
-// Temporary: start straight at level 3 instead of ramping up from 1.
-const START_LEVEL = 3;
-const START_WORDS_TYPED = (START_LEVEL - 1) * WORDS_PER_LEVEL;
 
 function createInitialState() {
   return {
@@ -32,8 +27,8 @@ function createInitialState() {
     started: false,
     gameOver: false,
     score: 0,
-    wordsTyped: START_WORDS_TYPED,
-    level: START_LEVEL,
+    wordsTyped: 0,
+    level: 1,
     lives: INITIAL_LIVES,
     streak: 0,
     correctChars: 0,
@@ -326,7 +321,7 @@ export default function TypewriterGame() {
     s.started = true;
     s.startTime = performance.now();
     setScore(0);
-    setLevel(START_LEVEL);
+    setLevel(1);
     setLives(INITIAL_LIVES);
     setWpm(0);
     setGameOver(false);
