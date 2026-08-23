@@ -9,4 +9,9 @@ export const GAMES = [
     description: "The block game.",
     thumbnail: "/games/tetris-thumb.png",
   },
+  {
+    slug: "typewriter",
+    title: "Typewriter",
+    description: "Type the falling words before they escape.",
+  },
 ];
