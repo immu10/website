@@ -13,5 +13,6 @@ export const GAMES = [
     slug: "typewriter",
     title: "Typewriter",
     description: "Type the falling words before they escape.",
+    thumbnail: "/games/typewriter-thumb.png",
   },
 ];
