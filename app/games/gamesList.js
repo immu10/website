@@ -15,4 +15,10 @@ export const GAMES = [
     description: "Type the falling words before they escape.",
     thumbnail: "/games/typewriter-thumb.png",
   },
+  {
+    slug: "asteroids",
+    title: "Asteroids",
+    description: "Rotate, thrust, and blast rocks before they blast you.",
+    thumbnail: "/games/asteroids-thumb.png",
+  },
 ];
