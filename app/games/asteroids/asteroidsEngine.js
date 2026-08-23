@@ -168,3 +168,51 @@ export function chaseSpawnAsteroid(id, distance) {
   };
   return makeAsteroid(id, size, pos, velocity);
 }
+
+// --- Powerups (centered mode only for now) ---
+// Timed buffs replace whatever's currently active rather than stacking —
+// picking up a second one just resets the clock on the new effect. Extra
+// life and bomb are instant, one-shot effects instead of timed buffs, so
+// they don't touch the "currently active" slot at all.
+
+export const POWERUP_TYPES = {
+  shield: { duration: 6000, instant: false },
+  rapid_fire: { duration: 8000, instant: false },
+  spread_shot: { duration: 8000, instant: false },
+  score_multiplier: { duration: 10000, instant: false },
+  speed_boost: { duration: 8000, instant: false },
+  extra_life: { duration: 0, instant: true },
+  bomb: { duration: 0, instant: true },
+};
+
+export const POWERUP_DROP_CHANCE = 0.15;
+export const POWERUP_RADIUS = 14;
+export const POWERUP_LIFETIME_MS = 9000;
+const POWERUP_DRIFT_SPEED_MIN = 15;
+const POWERUP_DRIFT_SPEED_MAX = 40;
+
+export const RAPID_FIRE_COOLDOWN_MULTIPLIER = 0.4;
+export const SPREAD_SHOT_ANGLE = 0.22; // radians between center and outer bullets
+export const SCORE_MULTIPLIER_FACTOR = 2;
+export const SPEED_BOOST_MULTIPLIER = 1.6;
+
+export function rollPowerupType() {
+  const types = Object.keys(POWERUP_TYPES);
+  return types[Math.floor(Math.random() * types.length)];
+}
+
+// Drifts slowly in a random direction so it reads as a pickup drifting in
+// the wreckage, not another asteroid.
+export function makePowerup(id, type, x, y, now) {
+  const angle = Math.random() * Math.PI * 2;
+  const speed = POWERUP_DRIFT_SPEED_MIN + Math.random() * (POWERUP_DRIFT_SPEED_MAX - POWERUP_DRIFT_SPEED_MIN);
+  return {
+    id,
+    type,
+    x,
+    y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    bornAt: now,
+  };
+}

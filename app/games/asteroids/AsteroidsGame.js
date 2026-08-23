@@ -34,6 +34,16 @@ import {
   chaseSpawnAsteroid,
   chaseBulletSpeedForDistance,
   chaseFireCooldownForDistance,
+  POWERUP_TYPES,
+  POWERUP_DROP_CHANCE,
+  POWERUP_RADIUS,
+  POWERUP_LIFETIME_MS,
+  RAPID_FIRE_COOLDOWN_MULTIPLIER,
+  SPREAD_SHOT_ANGLE,
+  SCORE_MULTIPLIER_FACTOR,
+  SPEED_BOOST_MULTIPLIER,
+  rollPowerupType,
+  makePowerup,
 } from "./asteroidsEngine";
 import { useAuth } from "@/app/games/AuthContext";
 import GuestIcon from "@/app/games/GuestIcon";
@@ -42,6 +52,23 @@ const SPRITE_SRC = {
   ship: "/games/asteroids/ship.png",
   detailed: "/games/asteroids/meteor_detailed_large.png",
   square: "/games/asteroids/meteor_square_large.png",
+  shield: "/games/asteroids/powerups/shield.png",
+  rapid_fire: "/games/asteroids/powerups/rapid_fire.png",
+  spread_shot: "/games/asteroids/powerups/spread_shot.png",
+  score_multiplier: "/games/asteroids/powerups/score_multiplier.png",
+  speed_boost: "/games/asteroids/powerups/speed_boost.png",
+  extra_life: "/games/asteroids/powerups/extra_life.png",
+  bomb: "/games/asteroids/powerups/bomb.png",
+};
+
+const POWERUP_COLORS = {
+  shield: "#5ec8ff",
+  rapid_fire: "#ffb057",
+  spread_shot: "#ffe066",
+  score_multiplier: "#c9a6ff",
+  speed_boost: "#6effc2",
+  extra_life: "#ff5e9c",
+  bomb: "#ff5e5e",
 };
 
 function createStars() {
@@ -68,6 +95,9 @@ function createInitialState() {
     bullets: [],
     asteroids: [],
     particles: [],
+    powerups: [],
+    activePowerup: null,
+    powerupUiAccum: 0,
     stars: createStars(),
     nextId: 1,
     wave: 0,
@@ -114,17 +144,19 @@ function spawnParticles(s, x, y, color, count = 10) {
   }
 }
 
-function updateCenteredShip(s, dt, keys) {
+function updateCenteredShip(s, dt, keys, speedBoosted) {
   const ship = s.ship;
+  const accel = speedBoosted ? THRUST_ACCEL * SPEED_BOOST_MULTIPLIER : THRUST_ACCEL;
+  const maxSpeed = speedBoosted ? MAX_SPEED * SPEED_BOOST_MULTIPLIER : MAX_SPEED;
   if (keys.left) ship.angle -= ROTATION_SPEED * dt;
   if (keys.right) ship.angle += ROTATION_SPEED * dt;
   if (keys.up) {
-    ship.vx += Math.sin(ship.angle) * THRUST_ACCEL * dt;
-    ship.vy += -Math.cos(ship.angle) * THRUST_ACCEL * dt;
+    ship.vx += Math.sin(ship.angle) * accel * dt;
+    ship.vy += -Math.cos(ship.angle) * accel * dt;
     const speed = Math.hypot(ship.vx, ship.vy);
-    if (speed > MAX_SPEED) {
-      ship.vx = (ship.vx / speed) * MAX_SPEED;
-      ship.vy = (ship.vy / speed) * MAX_SPEED;
+    if (speed > maxSpeed) {
+      ship.vx = (ship.vx / speed) * maxSpeed;
+      ship.vy = (ship.vy / speed) * maxSpeed;
     }
   }
   ship.vx *= 1 - DRAG * dt;
@@ -132,6 +164,23 @@ function updateCenteredShip(s, dt, keys) {
   ship.x += ship.vx * dt;
   ship.y += ship.vy * dt;
   wrap(ship, BOARD_W, BOARD_H);
+}
+
+// Applies a picked-up powerup's effect. Bomb/extra life are instant;
+// everything else just (re)arms the single active-buff slot — no stacking,
+// a fresh pickup simply resets the clock on whichever effect it is.
+function applyPowerupPickup(s, type, now, scoreMult) {
+  if (type === "extra_life") {
+    s.lives += 1;
+  } else if (type === "bomb") {
+    for (const a of s.asteroids) {
+      s.score += ASTEROID_SIZES[a.size].score * scoreMult;
+      spawnParticles(s, a.x, a.y, "#c9c9e8");
+    }
+    s.asteroids = [];
+  } else {
+    s.activePowerup = { type, expiresAt: now + POWERUP_TYPES[type].duration };
+  }
 }
 
 function updateChaseShip(s, dt, keys) {
@@ -169,6 +218,7 @@ export default function AsteroidsGame() {
   const [wave, setWave] = useState(0);
   const [distance, setDistance] = useState(0);
   const [lives, setLives] = useState(INITIAL_LIVES);
+  const [activePowerupUi, setActivePowerupUi] = useState(null);
   const [gameOver, setGameOver] = useState(false);
   const [started, setStarted] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -289,6 +339,16 @@ export default function AsteroidsGame() {
       drawSprite(ctx, key, a.x, a.y, radius * 2.3, a.rotation);
     }
 
+    const nowMs = performance.now();
+    for (const p of s.powerups) {
+      const remaining = POWERUP_LIFETIME_MS - (nowMs - p.bornAt);
+      // Blink for the last couple seconds before despawning, so a missed
+      // pickup doesn't just vanish without warning.
+      if (remaining < 2000 && Math.floor(nowMs / 150) % 2 === 0) continue;
+      const pulse = 1 + Math.sin(nowMs / 220 + p.id) * 0.08;
+      drawSprite(ctx, p.type, p.x, p.y, POWERUP_RADIUS * 2.4 * pulse, 0);
+    }
+
     if (s.started && !(s.gameOver && s.lives <= 0)) {
       const invuln = performance.now() < s.ship.invulnUntil;
       // Blink while invulnerable so a fresh respawn is visibly telegraphed.
@@ -370,6 +430,7 @@ export default function AsteroidsGame() {
       setWave(s.wave);
       setDistance(0);
       setLives(s.lives);
+      setActivePowerupUi(null);
       setGameOver(false);
       setPaused(false);
       setStarted(true);
@@ -416,12 +477,17 @@ export default function AsteroidsGame() {
         const ship = s.ship;
         const chase = s.mode === "chase";
 
-        if (chase) updateChaseShip(s, dt, keys);
-        else updateCenteredShip(s, dt, keys);
+        if (s.activePowerup && now >= s.activePowerup.expiresAt) s.activePowerup = null;
+        const activeType = s.activePowerup ? s.activePowerup.type : null;
+        const scoreMult = activeType === "score_multiplier" ? SCORE_MULTIPLIER_FACTOR : 1;
 
-        const fireCooldown = chase
+        if (chase) updateChaseShip(s, dt, keys);
+        else updateCenteredShip(s, dt, keys, activeType === "speed_boost");
+
+        let fireCooldown = chase
           ? chaseFireCooldownForDistance(s.distance)
           : FIRE_COOLDOWN_MS;
+        if (activeType === "rapid_fire") fireCooldown *= RAPID_FIRE_COOLDOWN_MULTIPLIER;
         const bulletSpeed = chase
           ? chaseBulletSpeedForDistance(s.distance)
           : BULLET_SPEED;
@@ -431,13 +497,18 @@ export default function AsteroidsGame() {
             x: ship.x + Math.sin(ship.angle) * SHIP_RADIUS,
             y: ship.y - Math.cos(ship.angle) * SHIP_RADIUS,
           };
-          s.bullets.push({
-            x: nose.x,
-            y: nose.y,
-            vx: Math.sin(ship.angle) * bulletSpeed,
-            vy: -Math.cos(ship.angle) * bulletSpeed,
-            bornAt: now,
-          });
+          const spreadOffsets =
+            activeType === "spread_shot" ? [-SPREAD_SHOT_ANGLE, 0, SPREAD_SHOT_ANGLE] : [0];
+          for (const offset of spreadOffsets) {
+            const angle = ship.angle + offset;
+            s.bullets.push({
+              x: nose.x,
+              y: nose.y,
+              vx: Math.sin(angle) * bulletSpeed,
+              vy: -Math.cos(angle) * bulletSpeed,
+              bornAt: now,
+            });
+          }
         }
 
         s.bullets = s.bullets.filter((b) => now - b.bornAt < BULLET_LIFETIME_MS);
@@ -490,11 +561,37 @@ export default function AsteroidsGame() {
           }
         }
 
-        // Bullet vs asteroid.
+        // Powerups: move/expire first so bullet and ship collision checks
+        // below see up-to-date positions (centered mode only, for now).
+        if (!chase) {
+          for (const p of s.powerups) {
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            wrap(p, BOARD_W, BOARD_H);
+          }
+          s.powerups = s.powerups.filter((p) => now - p.bornAt < POWERUP_LIFETIME_MS);
+        }
+
+        // Bullet vs asteroid, and — since flying into a drifting pickup
+        // proved fiddly — bullet vs powerup too, so shooting one collects it.
         const deadBullets = new Set();
         const deadAsteroids = new Set();
+        const collectedPowerups = new Set();
         const spawned = [];
         for (const b of s.bullets) {
+          if (deadBullets.has(b)) continue;
+          if (!chase) {
+            for (const p of s.powerups) {
+              if (collectedPowerups.has(p.id)) continue;
+              if (circlesCollide(b.x, b.y, 2, p.x, p.y, POWERUP_RADIUS)) {
+                deadBullets.add(b);
+                collectedPowerups.add(p.id);
+                spawnParticles(s, p.x, p.y, POWERUP_COLORS[p.type], 12);
+                applyPowerupPickup(s, p.type, now, scoreMult);
+                break;
+              }
+            }
+          }
           if (deadBullets.has(b)) continue;
           for (const a of s.asteroids) {
             if (deadAsteroids.has(a.id)) continue;
@@ -502,8 +599,11 @@ export default function AsteroidsGame() {
             if (circlesCollide(b.x, b.y, 2, a.x, a.y, radius)) {
               deadBullets.add(b);
               deadAsteroids.add(a.id);
-              s.score += pts;
+              s.score += pts * scoreMult;
               spawnParticles(s, a.x, a.y, "#c9c9e8");
+              if (!chase && Math.random() < POWERUP_DROP_CHANCE) {
+                s.powerups.push(makePowerup(s.nextId++, rollPowerupType(), a.x, a.y, now));
+              }
               const children = splitAsteroid(a, s.nextId);
               s.nextId += children.length;
               spawned.push(...children);
@@ -514,12 +614,16 @@ export default function AsteroidsGame() {
         if (deadBullets.size > 0) s.bullets = s.bullets.filter((b) => !deadBullets.has(b));
         if (deadAsteroids.size > 0) {
           s.asteroids = s.asteroids.filter((a) => !deadAsteroids.has(a.id));
-          setScore(s.score);
         }
         if (spawned.length > 0) s.asteroids.push(...spawned);
+        if (collectedPowerups.size > 0) {
+          s.powerups = s.powerups.filter((p) => !collectedPowerups.has(p.id));
+          setLives(s.lives);
+        }
+        if (deadAsteroids.size > 0 || collectedPowerups.size > 0) setScore(s.score);
 
         // Ship vs asteroid.
-        if (now >= ship.invulnUntil) {
+        if (now >= ship.invulnUntil && activeType !== "shield") {
           for (const a of s.asteroids) {
             const { radius } = ASTEROID_SIZES[a.size];
             if (circlesCollide(ship.x, ship.y, SHIP_RADIUS * 0.8, a.x, a.y, radius)) {
@@ -528,6 +632,37 @@ export default function AsteroidsGame() {
               break;
             }
           }
+        }
+
+        // Ship vs powerup (still collectible by touch, not just by shooting).
+        if (!chase) {
+          let collectedId = null;
+          for (const p of s.powerups) {
+            if (circlesCollide(ship.x, ship.y, SHIP_RADIUS * 0.8, p.x, p.y, POWERUP_RADIUS)) {
+              spawnParticles(s, p.x, p.y, POWERUP_COLORS[p.type], 12);
+              applyPowerupPickup(s, p.type, now, scoreMult);
+              collectedId = p.id;
+              break;
+            }
+          }
+          if (collectedId !== null) {
+            s.powerups = s.powerups.filter((p) => p.id !== collectedId);
+            setLives(s.lives);
+            setScore(s.score);
+          }
+        }
+
+        s.powerupUiAccum += dt * 1000;
+        if (s.powerupUiAccum > 150) {
+          s.powerupUiAccum = 0;
+          setActivePowerupUi(
+            s.activePowerup
+              ? {
+                  type: s.activePowerup.type,
+                  remaining: Math.max(0, Math.ceil((s.activePowerup.expiresAt - now) / 1000)),
+                }
+              : null
+          );
         }
 
         // Particles.
@@ -796,6 +931,25 @@ export default function AsteroidsGame() {
               {"♥".repeat(Math.max(0, lives)) || "—"}
             </div>
           </div>
+
+          {activePowerupUi && (
+            <div>
+              <div className="text-xs uppercase tracking-wide text-white/40">
+                Powerup
+              </div>
+              <div className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/games/asteroids/powerups/${activePowerupUi.type}.png`}
+                  alt=""
+                  className="h-6 w-6"
+                />
+                <span className="font-heading text-white">
+                  {activePowerupUi.remaining}s
+                </span>
+              </div>
+            </div>
+          )}
 
           <button
             onClick={togglePause}
