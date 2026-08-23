@@ -6,7 +6,7 @@
 // Requires the `user-top-read` scope on the refresh token (re-run
 // /api/spotify/login after this scope was added).
 
-import { getAccessToken, spotifyConfigured } from "../../../lib/spotify";
+import { getAccessToken, spotifyConfigured } from "@/app/lib/spotify";
 
 export const dynamic = "force-dynamic";
 

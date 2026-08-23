@@ -1,6 +1,6 @@
 // app/home/page.js  ->  served at /home  (the real landing content)
 
-import FishSwim from "../components/background/FishSwim";
+import FishSwim from "@/app/components/background/FishSwim";
 
 export default function Home() {
   return (

@@ -9,15 +9,15 @@
 // original free-text-name, fresh-row-per-submission behavior.
 
 import { randomUUID } from "crypto";
-import { getRedis, redisConfigured } from "../../../../lib/redis";
-import { validateName } from "../../../../lib/profanity";
-import { getSession } from "../../../../lib/auth";
-import { checkRateLimit } from "../../../../lib/ratelimit";
-import { getClientIp } from "../../../../lib/ip";
+import { getRedis, redisConfigured } from "@/app/lib/redis";
+import { validateName } from "@/app/lib/profanity";
+import { getSession } from "@/app/lib/auth";
+import { checkRateLimit } from "@/app/lib/ratelimit";
+import { getClientIp } from "@/app/lib/ip";
 import {
   MIN_ELAPSED_SECONDS,
   maxPlausibleScore,
-} from "../../../../games/tetris/leaderboardRules";
+} from "@/app/games/tetris/leaderboardRules";
 
 export const dynamic = "force-dynamic";
 

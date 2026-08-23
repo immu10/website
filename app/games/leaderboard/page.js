@@ -2,11 +2,11 @@
 // Simple top-scores page. Reads straight from Redis (server component) —
 // no need to round-trip through our own API route here.
 
-import { getLeaderboard } from "../../lib/leaderboard";
-import { GAMES } from "../gamesList";
+import { getLeaderboard } from "@/app/lib/leaderboard";
+import { GAMES } from "@/app/games/gamesList";
 import GameSelect from "./GameSelect";
-import GuestIcon from "../GuestIcon";
-import AuthWidget from "../AuthWidget";
+import GuestIcon from "@/app/games/GuestIcon";
+import AuthWidget from "@/app/games/AuthWidget";
 
 export const metadata = { title: "Leaderboard — immu10" };
 

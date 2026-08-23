@@ -7,12 +7,12 @@
 // way the data shown isn't real, so both cases raise the same flag.
 
 import { useCallback, useState } from "react";
-import NowPlaying from "../components/showcase/NowPlaying";
-import TopTracks from "../components/showcase/TopTracks";
-import SteamGames from "../components/showcase/SteamGames";
-import ShowsMovies from "../components/showcase/ShowsMovies";
-import ManhwaList from "../components/showcase/ManhwaList";
-import LiveWarning from "../components/showcase/LiveWarning";
+import NowPlaying from "@/app/components/showcase/NowPlaying";
+import TopTracks from "@/app/components/showcase/TopTracks";
+import SteamGames from "@/app/components/showcase/SteamGames";
+import ShowsMovies from "@/app/components/showcase/ShowsMovies";
+import ManhwaList from "@/app/components/showcase/ManhwaList";
+import LiveWarning from "@/app/components/showcase/LiveWarning";
 
 const tile =
   "flex flex-col gap-4 rounded-2xl bg-black/10 p-5 ring-1 ring-white/10 backdrop-blur-sm";

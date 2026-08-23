@@ -1,7 +1,7 @@
 // app/games/tetris/page.js  ->  served at /games/tetris
 
 import TetrisGame from "./TetrisGame";
-import AuthWidget from "../AuthWidget";
+import AuthWidget from "@/app/games/AuthWidget";
 
 export const metadata = { title: "Tetris — immu10" };
 

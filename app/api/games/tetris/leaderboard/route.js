@@ -5,7 +5,7 @@
 // response. The underlying Redis read is cached (see lib/leaderboard.js) so
 // this route can be hit freely without each request costing a Redis call.
 
-import { getLeaderboard } from "../../../../lib/leaderboard";
+import { getLeaderboard } from "@/app/lib/leaderboard";
 
 export const dynamic = "force-dynamic";
 

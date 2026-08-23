@@ -17,8 +17,8 @@ import {
   scoreForLines,
   dropIntervalForLevel,
 } from "./tetrisEngine";
-import { useAuth } from "../AuthContext";
-import GuestIcon from "../GuestIcon";
+import { useAuth } from "@/app/games/AuthContext";
+import GuestIcon from "@/app/games/GuestIcon";
 
 const MIN_CELL = 14;
 const MAX_CELL = 40;

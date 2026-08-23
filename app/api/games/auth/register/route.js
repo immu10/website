@@ -9,9 +9,9 @@ import {
   validatePassword,
   setSessionCookie,
   dbConfigured,
-} from "../../../../lib/auth";
-import { checkRateLimit } from "../../../../lib/ratelimit";
-import { getClientIp } from "../../../../lib/ip";
+} from "@/app/lib/auth";
+import { checkRateLimit } from "@/app/lib/ratelimit";
+import { getClientIp } from "@/app/lib/ip";
 
 export const dynamic = "force-dynamic";
 

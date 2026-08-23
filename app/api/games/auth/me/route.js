@@ -2,7 +2,7 @@
 // Lets the client check login state on page load. No DB hit — verifying
 // the session cookie is just a signature + expiry check.
 
-import { getSession } from "../../../../lib/auth";
+import { getSession } from "@/app/lib/auth";
 
 export const dynamic = "force-dynamic";
 

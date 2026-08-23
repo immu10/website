@@ -1,6 +1,6 @@
 // app/api/games/auth/logout/route.js  ->  POST /api/games/auth/logout
 
-import { clearSessionCookie } from "../../../../lib/auth";
+import { clearSessionCookie } from "@/app/lib/auth";
 
 export const dynamic = "force-dynamic";
 

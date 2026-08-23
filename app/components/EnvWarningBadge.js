@@ -5,7 +5,7 @@
 // the stale-data warning on /projects. Deliberately just a flag, not a list
 // of specifics — check the server logs/dashboard for which one.
 
-import { getMissingEnvFeatures } from "../lib/envCheck";
+import { getMissingEnvFeatures } from "@/app/lib/envCheck";
 
 export default function EnvWarningBadge() {
   if (getMissingEnvFeatures().length === 0) return null;
