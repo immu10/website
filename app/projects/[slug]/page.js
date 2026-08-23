@@ -4,7 +4,7 @@
 import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import Carousel from "../../components/Carousel";
+import Carousel from "@/app/components/Carousel";
 import {
   getProjects,
   getProject,
@@ -12,7 +12,7 @@ import {
   filterSections,
   splitOutSection,
   USER,
-} from "../../lib/github";
+} from "@/app/lib/github";
 
 export async function generateStaticParams() {
   // A GitHub API failure here shouldn't fail the whole build — just skip

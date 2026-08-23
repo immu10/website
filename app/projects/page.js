@@ -3,8 +3,8 @@
 // tagged `no-site` and has a README.
 
 import Link from "next/link";
-import { getProjects } from "../lib/github";
-import snapshot from "../data/projects-snapshot.json";
+import { getProjects } from "@/app/lib/github";
+import snapshot from "@/app/data/projects-snapshot.json";
 
 export default async function Projects() {
   let projects;

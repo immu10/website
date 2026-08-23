@@ -7,7 +7,7 @@
 // Needs three env vars (see .env.local.example):
 //   SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REFRESH_TOKEN
 
-import { getAccessToken, spotifyConfigured } from "../../../lib/spotify";
+import { getAccessToken, spotifyConfigured } from "@/app/lib/spotify";
 
 export const dynamic = "force-dynamic"; // never cache — it's live data
 

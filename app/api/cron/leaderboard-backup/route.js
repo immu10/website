@@ -7,8 +7,8 @@
 // Restoring is manual and rare: read the backup key, re-ZADD/HSET its
 // contents back into the live keys.
 
-import { getRedis, redisConfigured } from "../../../lib/redis";
-import { GAMES } from "../../../games/gamesList";
+import { getRedis, redisConfigured } from "@/app/lib/redis";
+import { GAMES } from "@/app/games/gamesList";
 
 export const dynamic = "force-dynamic";
 

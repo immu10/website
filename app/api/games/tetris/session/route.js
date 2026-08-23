@@ -6,10 +6,10 @@
 // leaderboardRules.js for the reasoning.
 
 import { randomUUID } from "crypto";
-import { getRedis, redisConfigured } from "../../../../lib/redis";
-import { SESSION_TTL_SECONDS } from "../../../../games/tetris/leaderboardRules";
-import { checkRateLimit } from "../../../../lib/ratelimit";
-import { getClientIp } from "../../../../lib/ip";
+import { getRedis, redisConfigured } from "@/app/lib/redis";
+import { SESSION_TTL_SECONDS } from "@/app/games/tetris/leaderboardRules";
+import { checkRateLimit } from "@/app/lib/ratelimit";
+import { getClientIp } from "@/app/lib/ip";
 
 export const dynamic = "force-dynamic";
 
