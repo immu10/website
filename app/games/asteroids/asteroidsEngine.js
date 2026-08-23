@@ -104,18 +104,21 @@ export function circlesCollide(ax, ay, ar, bx, by, br) {
 }
 
 // --- Chase mode ---
-// Ship holds a fixed screen position and only moves vertically; the world
-// scrolls past it left-ward instead of wrapping. One life, endless, gets
-// harder with distance. Reuses the same ship/bullet/asteroid primitives
-// above — only spawn/scroll/scoring differ from centered mode.
+// Ship stays within a lane on the left side of the screen — free to move on
+// both axes, but never as far right as the oncoming rocks spawn — while the
+// world scrolls past it left-ward instead of wrapping. One life, endless,
+// gets harder with distance. Reuses the same ship/bullet/asteroid
+// primitives above — only spawn/scroll/scoring differ from centered mode.
 
-export const CHASE_SHIP_X = Math.round(BOARD_W * 0.22);
+export const CHASE_SHIP_X = Math.round(BOARD_W * 0.22); // spawn position
+export const CHASE_SHIP_X_MIN = Math.round(BOARD_W * 0.08);
+export const CHASE_SHIP_X_MAX = Math.round(BOARD_W * 0.4);
 export const CHASE_INITIAL_LIVES = 1;
 
-export const CHASE_VERTICAL_ACCEL = 900; // px/sec^2
-export const CHASE_MAX_VERTICAL_SPEED = 380; // px/sec
+export const CHASE_ACCEL = 900; // px/sec^2, both axes
+export const CHASE_MAX_SPEED = 380; // px/sec, both axes
 export const CHASE_DRAG = 4.5; // heavier than centered mode's DRAG — with
-// only one control axis and one life, snappy stops matter more than coasting.
+// only one life, snappy stops matter more than coasting.
 
 export const CHASE_BASE_SCROLL_SPEED = 140; // px/sec
 export const CHASE_SPAWN_INTERVAL_BASE_MS = 900;
@@ -129,12 +132,24 @@ export const CHASE_DISTANCE_SCORE_PER_PX = 0.1;
 // Uncapped on purpose — the ramp is the real endgame. There's no top speed
 // to "beat"; you just fly until the density of oncoming rocks outpaces
 // whatever's still dodgeable.
-export function chaseScrollSpeedForDistance(distance) {
-  return CHASE_BASE_SCROLL_SPEED + distance * 0.05;
+//
+// Driven by elapsed time, not distance: distance = integral of scroll
+// speed, so a distance-based ramp feeds back into itself (faster ->
+// more distance per second -> faster still), which compounds into
+// exponential growth — doubling every ~14s, thousands of px/sec within two
+// minutes. Elapsed seconds grows at a flat 1/sec no matter how fast you're
+// going, so this ramp is a plain, predictable straight line instead.
+export const CHASE_SCROLL_ACCEL = 4; // px/sec, added per second elapsed
+
+export function chaseScrollSpeedForElapsed(elapsedSeconds) {
+  return CHASE_BASE_SCROLL_SPEED + elapsedSeconds * CHASE_SCROLL_ACCEL;
 }
 
-export function chaseSpawnIntervalForDistance(distance) {
-  return Math.max(CHASE_SPAWN_INTERVAL_MIN_MS, CHASE_SPAWN_INTERVAL_BASE_MS - distance * 0.1);
+export function chaseSpawnIntervalForElapsed(elapsedSeconds) {
+  return Math.max(
+    CHASE_SPAWN_INTERVAL_MIN_MS,
+    CHASE_SPAWN_INTERVAL_BASE_MS - elapsedSeconds * 12
+  );
 }
 
 // Guns keep pace with how fast you're flying: both scale with the same
@@ -144,23 +159,23 @@ export function chaseSpawnIntervalForDistance(distance) {
 // absurd late-game speeds, fire rate stays a rate rather than a beam.
 export const CHASE_MIN_FIRE_COOLDOWN_MS = 90;
 
-export function chaseBulletSpeedForDistance(distance) {
-  const speedFactor = chaseScrollSpeedForDistance(distance) / CHASE_BASE_SCROLL_SPEED;
+export function chaseBulletSpeedForElapsed(elapsedSeconds) {
+  const speedFactor = chaseScrollSpeedForElapsed(elapsedSeconds) / CHASE_BASE_SCROLL_SPEED;
   return BULLET_SPEED * speedFactor;
 }
 
-export function chaseFireCooldownForDistance(distance) {
-  const speedFactor = chaseScrollSpeedForDistance(distance) / CHASE_BASE_SCROLL_SPEED;
+export function chaseFireCooldownForElapsed(elapsedSeconds) {
+  const speedFactor = chaseScrollSpeedForElapsed(elapsedSeconds) / CHASE_BASE_SCROLL_SPEED;
   return Math.max(CHASE_MIN_FIRE_COOLDOWN_MS, FIRE_COOLDOWN_MS / speedFactor);
 }
 
 // Spawns just past the right edge at a random height, drifting with the
 // scroll (plus a little vertical wobble) so it reads as an obstacle in the
 // ship's path rather than a random flung rock.
-export function chaseSpawnAsteroid(id, distance) {
+export function chaseSpawnAsteroid(id, elapsedSeconds) {
   const sizes = ["large", "medium", "small"];
   const size = sizes[Math.floor(Math.random() * sizes.length)];
-  const scrollSpeed = chaseScrollSpeedForDistance(distance);
+  const scrollSpeed = chaseScrollSpeedForElapsed(elapsedSeconds);
   const pos = { x: BOARD_W + 40, y: Math.random() * BOARD_H };
   const velocity = {
     vx: -scrollSpeed * (0.85 + Math.random() * 0.3),

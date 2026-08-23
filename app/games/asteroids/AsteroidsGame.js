@@ -24,16 +24,18 @@ import {
   splitAsteroid,
   circlesCollide,
   CHASE_SHIP_X,
+  CHASE_SHIP_X_MIN,
+  CHASE_SHIP_X_MAX,
   CHASE_INITIAL_LIVES,
-  CHASE_VERTICAL_ACCEL,
-  CHASE_MAX_VERTICAL_SPEED,
+  CHASE_ACCEL,
+  CHASE_MAX_SPEED,
   CHASE_DRAG,
   CHASE_DISTANCE_SCORE_PER_PX,
-  chaseScrollSpeedForDistance,
-  chaseSpawnIntervalForDistance,
+  chaseScrollSpeedForElapsed,
+  chaseSpawnIntervalForElapsed,
   chaseSpawnAsteroid,
-  chaseBulletSpeedForDistance,
-  chaseFireCooldownForDistance,
+  chaseBulletSpeedForElapsed,
+  chaseFireCooldownForElapsed,
   POWERUP_TYPES,
   POWERUP_DROP_CHANCE,
   POWERUP_RADIUS,
@@ -103,6 +105,7 @@ function createInitialState() {
     wave: 0,
     distance: 0,
     distanceScore: 0,
+    chaseElapsed: 0,
     scrollSpeed: 0,
     spawnAccum: 0,
     spawnInterval: 0,
@@ -185,19 +188,34 @@ function applyPowerupPickup(s, type, now, scoreMult) {
 
 function updateChaseShip(s, dt, keys) {
   const ship = s.ship;
-  if (keys.up) ship.vy -= CHASE_VERTICAL_ACCEL * dt;
-  if (keys.down) ship.vy += CHASE_VERTICAL_ACCEL * dt;
-  if (ship.vy > CHASE_MAX_VERTICAL_SPEED) ship.vy = CHASE_MAX_VERTICAL_SPEED;
-  if (ship.vy < -CHASE_MAX_VERTICAL_SPEED) ship.vy = -CHASE_MAX_VERTICAL_SPEED;
+
+  if (keys.up) ship.vy -= CHASE_ACCEL * dt;
+  if (keys.down) ship.vy += CHASE_ACCEL * dt;
+  if (ship.vy > CHASE_MAX_SPEED) ship.vy = CHASE_MAX_SPEED;
+  if (ship.vy < -CHASE_MAX_SPEED) ship.vy = -CHASE_MAX_SPEED;
   ship.vy *= 1 - CHASE_DRAG * dt;
   ship.y += ship.vy * dt;
-  const margin = SHIP_RADIUS;
-  if (ship.y < margin) {
-    ship.y = margin;
+  const marginY = SHIP_RADIUS;
+  if (ship.y < marginY) {
+    ship.y = marginY;
     ship.vy = 0;
-  } else if (ship.y > BOARD_H - margin) {
-    ship.y = BOARD_H - margin;
+  } else if (ship.y > BOARD_H - marginY) {
+    ship.y = BOARD_H - marginY;
     ship.vy = 0;
+  }
+
+  if (keys.left) ship.vx -= CHASE_ACCEL * dt;
+  if (keys.right) ship.vx += CHASE_ACCEL * dt;
+  if (ship.vx > CHASE_MAX_SPEED) ship.vx = CHASE_MAX_SPEED;
+  if (ship.vx < -CHASE_MAX_SPEED) ship.vx = -CHASE_MAX_SPEED;
+  ship.vx *= 1 - CHASE_DRAG * dt;
+  ship.x += ship.vx * dt;
+  if (ship.x < CHASE_SHIP_X_MIN) {
+    ship.x = CHASE_SHIP_X_MIN;
+    ship.vx = 0;
+  } else if (ship.x > CHASE_SHIP_X_MAX) {
+    ship.x = CHASE_SHIP_X_MAX;
+    ship.vx = 0;
   }
 }
 
@@ -416,8 +434,8 @@ export default function AsteroidsGame() {
       if (chosenMode === "chase") {
         s.ship = createChaseShip();
         s.lives = CHASE_INITIAL_LIVES;
-        s.scrollSpeed = chaseScrollSpeedForDistance(0);
-        s.spawnInterval = chaseSpawnIntervalForDistance(0);
+        s.scrollSpeed = chaseScrollSpeedForElapsed(0);
+        s.spawnInterval = chaseSpawnIntervalForElapsed(0);
       } else {
         s.ship = createCenteredShip();
         s.lives = INITIAL_LIVES;
@@ -485,11 +503,11 @@ export default function AsteroidsGame() {
         else updateCenteredShip(s, dt, keys, activeType === "speed_boost");
 
         let fireCooldown = chase
-          ? chaseFireCooldownForDistance(s.distance)
+          ? chaseFireCooldownForElapsed(s.chaseElapsed)
           : FIRE_COOLDOWN_MS;
         if (activeType === "rapid_fire") fireCooldown *= RAPID_FIRE_COOLDOWN_MULTIPLIER;
         const bulletSpeed = chase
-          ? chaseBulletSpeedForDistance(s.distance)
+          ? chaseBulletSpeedForElapsed(s.chaseElapsed)
           : BULLET_SPEED;
         if (keys.fire && now - s.lastFireTime > fireCooldown) {
           s.lastFireTime = now;
@@ -519,14 +537,15 @@ export default function AsteroidsGame() {
         }
 
         if (chase) {
+          s.chaseElapsed += dt;
           s.distance += s.scrollSpeed * dt;
-          s.scrollSpeed = chaseScrollSpeedForDistance(s.distance);
-          s.spawnInterval = chaseSpawnIntervalForDistance(s.distance);
+          s.scrollSpeed = chaseScrollSpeedForElapsed(s.chaseElapsed);
+          s.spawnInterval = chaseSpawnIntervalForElapsed(s.chaseElapsed);
 
           s.spawnAccum += dt * 1000;
           if (s.spawnAccum > s.spawnInterval) {
             s.spawnAccum = 0;
-            s.asteroids.push(chaseSpawnAsteroid(s.nextId++, s.distance));
+            s.asteroids.push(chaseSpawnAsteroid(s.nextId++, s.chaseElapsed));
           }
 
           for (const a of s.asteroids) {
@@ -901,7 +920,7 @@ export default function AsteroidsGame() {
 
           <p className="text-xs text-white/40">
             {mode === "chase"
-              ? "↑ ↓ / W S move · space fire · Esc pause. One life."
+              ? "arrows / WASD move · space fire · Esc pause. One life."
               : "← → / A D rotate · ↑ / W thrust · space fire · Esc pause."}
           </p>
         </div>
