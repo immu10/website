@@ -50,7 +50,6 @@ import {
   SPEED_BOOST_MULTIPLIER,
   rollPowerupType,
   makePowerup,
-  makeChasePowerup,
   BOSS_INTERVAL_SECONDS,
   BOSS_RADIUS,
   BOSS_SCORE,
@@ -69,6 +68,12 @@ import {
   HEAT_GAIN_PER_SECOND,
   HEAT_COOL_RATE,
   OVERHEAT_LOCKOUT_MS,
+  coresForBossTier,
+  SHOP_ITEMS,
+  shopItemCost,
+  MERCHANT_OFFSET_X,
+  MERCHANT_SHIELD_OFFSET_X,
+  MERCHANT_SHIELD_RADIUS,
 } from "./asteroidsEngine";
 import { useAuth } from "@/app/games/AuthContext";
 import GuestIcon from "@/app/games/GuestIcon";
@@ -98,6 +103,32 @@ const POWERUP_COLORS = {
   bomb: "#ff5e5e",
   unlimited_fire: "#a8e6ff",
 };
+
+// Responsive board sizing — same approach as Tetris's cellSize auto-fit:
+// budget out roughly how much horizontal/vertical chrome (heading, side
+// panel, page padding, controls hint, touch D-pad on phones) surrounds the
+// board, then size the canvas's *rendered* width (not its internal
+// resolution — BOARD_W/BOARD_H stay fixed) to whatever fits. Recomputed on
+// resize, which also fires on orientation change, so rotating the device
+// reflows it the same way Tetris does.
+const MIN_BOARD_RENDER_W = 260;
+const BOARD_CHROME_W = 240;
+const BOARD_CHROME_H = { desktop: 260, mobile: 480 };
+
+// Rotating the canvas view means "up" on screen no longer matches "up" in
+// the board's own (unrotated) coordinate space that physics/rendering run
+// in. Rather than rotate the whole simulation, controls get remapped: a
+// screen-relative press (the player always means "toward the top of what
+// I'm looking at") is translated to whichever board-space direction
+// currently appears there. Angles are clockwise-from-up, matching the CSS
+// rotation applied to the canvas.
+const DIR_ANGLES = { up: 0, right: 90, down: 180, left: 270 };
+const ANGLE_DIRS = { 0: "up", 90: "right", 180: "down", 270: "left" };
+
+function remapDirection(screenDir, rotation) {
+  const boardAngle = ((DIR_ANGLES[screenDir] - rotation) % 360 + 360) % 360;
+  return ANGLE_DIRS[boardAngle];
+}
 
 function createStars() {
   return Array.from({ length: 90 }, () => ({
@@ -134,6 +165,14 @@ function createInitialState() {
     bossBullets: [],
     nextBossAt: 0,
     bossesDefeated: 0,
+    shopOpen: false,
+    cores: 0,
+    merchant: null,
+    shopPurchaseCounts: {},
+    heatMaxBonus: 0,
+    coolRateBonusPct: 0,
+    dropChanceBonus: 0,
+    lockoutReductionPct: 0,
     stars: createStars(),
     nextId: 1,
     wave: 0,
@@ -298,13 +337,97 @@ export default function AsteroidsGame() {
   const [distance, setDistance] = useState(0);
   const [lives, setLives] = useState(INITIAL_LIVES);
   const [activePowerupsUi, setActivePowerupsUi] = useState([]);
+  const [shopOpen, setShopOpen] = useState(false);
+  const [cores, setCores] = useState(0);
+  const [shopPurchaseCounts, setShopPurchaseCounts] = useState({});
   const [gameOver, setGameOver] = useState(false);
   const [started, setStarted] = useState(false);
   const [paused, setPaused] = useState(false);
 
+  // Rendered board width in px — auto-fit to the viewport, same pattern as
+  // Tetris's cellSize: starts at the native resolution, the effect below
+  // shrinks it to fit as soon as window dimensions are available (SSR has
+  // none — `maxWidth: "100%"` on the wrapper covers that first frame), and
+  // the slider lets the player override it freely, same as Tetris's board-
+  // size slider. Once overridden, auto-fit stops adjusting it on
+  // resize/rotation until "Default" is pressed again.
+  const [boardRenderW, setBoardRenderW] = useState(BOARD_W);
+  const manualBoardSizeRef = useRef(false);
+
+  // Manual canvas rotation — a desktop-friendly "play it vertical" option,
+  // independent of device/screen orientation. Cycles 0 -> 90 -> 180 -> 270.
+  // Controls remap to match (see remapDirection/setDirectionKey below) —
+  // "up" always means toward the top of whatever's currently on screen.
+  const [canvasRotation, setCanvasRotation] = useState(0);
+  const canvasRotationRef = useRef(0);
+  useEffect(() => {
+    canvasRotationRef.current = canvasRotation;
+    // Rotating mid-hold would otherwise leave a stale board-space flag
+    // stuck true (set under the old mapping, never cleared since the key
+    // release now clears a different flag under the new one).
+    const keys = keysRef.current;
+    keys.up = false;
+    keys.down = false;
+    keys.left = false;
+    keys.right = false;
+  }, [canvasRotation]);
+
+  const boardRenderH = boardRenderW * (BOARD_H / BOARD_W);
+  const rotatedSideways = canvasRotation === 90 || canvasRotation === 270;
+  const canvasTransform =
+    canvasRotation === 90
+      ? "rotate(90deg) translateY(-100%)"
+      : canvasRotation === 180
+        ? "rotate(180deg) translate(-100%, -100%)"
+        : canvasRotation === 270
+          ? "rotate(270deg) translateX(-100%)"
+          : "none";
+
+  // Sets/clears the board-space key that a screen-relative direction
+  // currently maps to, given the live canvas rotation. Used by both
+  // keyboard and the touch D-pad, so remapping is consistent everywhere.
+  const setDirectionKey = useCallback((screenDir, pressed) => {
+    keysRef.current[remapDirection(screenDir, canvasRotationRef.current)] = pressed;
+  }, []);
+
+  const computeBoardFit = useCallback(() => {
+    const isMobile = window.innerWidth < 640; // matches the sm: breakpoint elsewhere
+    const widthBudget = window.innerWidth - BOARD_CHROME_W;
+    const heightBudget =
+      window.innerHeight - (isMobile ? BOARD_CHROME_H.mobile : BOARD_CHROME_H.desktop);
+    const maxWByHeight = heightBudget * (BOARD_W / BOARD_H);
+    const fit = Math.min(widthBudget, maxWByHeight);
+    return Math.max(MIN_BOARD_RENDER_W, Math.min(BOARD_W, fit));
+  }, []);
+
+  const applyBoardFit = useCallback(() => {
+    if (!manualBoardSizeRef.current) setBoardRenderW(computeBoardFit());
+  }, [computeBoardFit]);
+
+  useEffect(() => {
+    // Initial fit needs window dimensions, unavailable during SSR/first
+    // render, so this has to run post-mount rather than as initial state.
+    applyBoardFit();
+    // orientationchange can fire before the browser has settled on the new
+    // innerWidth/innerHeight (notably iOS Safari), so re-check shortly
+    // after too rather than trusting the values at the moment it fires.
+    const onOrientationChange = () => {
+      applyBoardFit();
+      setTimeout(applyBoardFit, 200);
+    };
+    window.addEventListener("resize", applyBoardFit);
+    window.addEventListener("orientationchange", onOrientationChange);
+    return () => {
+      window.removeEventListener("resize", applyBoardFit);
+      window.removeEventListener("orientationchange", onOrientationChange);
+    };
+  }, [applyBoardFit]);
+
   // Leaderboard: sessionTokenRef is minted fresh per game (see startGame),
   // same anti-cheat approach as Tetris/Typewriter — see
-  // /api/games/asteroids/score for why.
+  // /api/games/asteroids-classic/score (or -chase) for why. Classic and
+  // Chase are separate leaderboards since they score completely
+  // differently — see gamesList.js's LEADERBOARDS export.
   const sessionTokenRef = useRef(null);
   const [playerName, setPlayerName] = useState("");
   const [submitState, setSubmitState] = useState("idle"); // idle | submitting | submitted | error
@@ -330,11 +453,12 @@ export default function AsteroidsGame() {
   }, []);
 
   const fetchLeaderboard = useCallback(() => {
-    fetch("/api/games/asteroids/leaderboard")
+    const slug = mode === "chase" ? "asteroids-chase" : "asteroids-classic";
+    fetch(`/api/games/${slug}/leaderboard`)
       .then((res) => res.json())
       .then((data) => setLeaderboard(data.entries ?? []))
       .catch(() => {});
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
     fetchLeaderboard();
@@ -349,7 +473,8 @@ export default function AsteroidsGame() {
     }
     setSubmitState("submitting");
     try {
-      const res = await fetch("/api/games/asteroids/score", {
+      const slug = mode === "chase" ? "asteroids-chase" : "asteroids-classic";
+      const res = await fetch(`/api/games/${slug}/score`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -371,7 +496,7 @@ export default function AsteroidsGame() {
       setSubmitState("error");
       setSubmitError("Network error.");
     }
-  }, [playerName, fetchLeaderboard]);
+  }, [playerName, fetchLeaderboard, mode]);
 
   const drawSprite = (ctx, key, x, y, size, rotation) => {
     const img = imagesRef.current[key];
@@ -482,6 +607,32 @@ export default function AsteroidsGame() {
       ctx.fillRect(barX, barY, barW * pct, 6);
     }
 
+    // Merchant + shield during the shop interlude — gold glow (distinct
+    // from the boss's blue/red) so it doesn't read as another hazard, and
+    // a shield dome facing the oncoming rocks it's blocking.
+    if (s.shopOpen && s.merchant) {
+      const m = s.merchant;
+      for (let i = 6; i > 0; i--) {
+        ctx.fillStyle = `rgba(255,209,94,${0.03 * (7 - i)})`;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, SHIP_RADIUS * 2 + i * 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      drawSprite(ctx, "ship", m.x, m.y, SHIP_RADIUS * 2.6, Math.PI / 2);
+
+      const shieldX = m.x + MERCHANT_SHIELD_OFFSET_X;
+      const pulse = 1 + Math.sin(nowMs / 300) * 0.05;
+      ctx.beginPath();
+      ctx.moveTo(shieldX, m.y);
+      ctx.arc(shieldX, m.y, MERCHANT_SHIELD_RADIUS * pulse, -Math.PI / 2, Math.PI / 2);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(94,200,255,0.12)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(94,200,255,0.6)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
     if (s.started && !(s.gameOver && s.lives <= 0)) {
       const invuln = nowMs < s.ship.invulnUntil;
       // Blink while invulnerable so a fresh respawn is visibly telegraphed.
@@ -533,15 +684,20 @@ export default function AsteroidsGame() {
       }
     }
 
-    // Weapon heat gauge — top-center ring, fills as heat rises. Blue/green
-    // while safe, amber then red as it climbs, and flashes red while
-    // locked out so "why can't I shoot" reads instantly.
-    if (s.started && !(s.gameOver && s.lives <= 0)) {
-      const heatCx = BOARD_W / 2;
-      const heatCy = 20;
+    // Weapon heat gauge — floats just off the ship's upper-right so it
+    // stays in view no matter where the ship wanders, rather than sitting
+    // in a fixed HUD spot far from what you're actually looking at. Fills
+    // as heat rises: blue/green while safe, amber then red as it climbs,
+    // flashes red while locked out so "why can't I shoot" reads instantly.
+    // Clamped to the board so it doesn't clip off-screen near the edges.
+    // Chase mode only — classic has no heat mechanic.
+    if (s.mode === "chase" && s.started && !(s.gameOver && s.lives <= 0)) {
       const heatR = 13;
+      const heatMargin = heatR + 4;
+      const heatCx = Math.min(BOARD_W - heatMargin, Math.max(heatMargin, s.ship.x + SHIP_RADIUS * 2.4));
+      const heatCy = Math.min(BOARD_H - heatMargin, Math.max(heatMargin, s.ship.y - SHIP_RADIUS * 2.4));
       const locked = nowMs < s.heatLockedUntil;
-      const heatPct = Math.min(1, s.heat / HEAT_MAX);
+      const heatPct = Math.min(1, s.heat / (HEAT_MAX + s.heatMaxBonus));
 
       ctx.beginPath();
       ctx.arc(heatCx, heatCy, heatR, 0, Math.PI * 2);
@@ -613,6 +769,30 @@ export default function AsteroidsGame() {
     });
   }, []);
 
+  const buyItem = useCallback((key) => {
+    const s = stateRef.current;
+    const bought = s.shopPurchaseCounts[key] || 0;
+    const cost = shopItemCost(key, bought);
+    if (s.cores < cost) return;
+    s.cores -= cost;
+    s.shopPurchaseCounts[key] = bought + 1;
+    if (key === "heat_capacity") s.heatMaxBonus += 15;
+    else if (key === "coolant_boost") s.coolRateBonusPct += 0.25;
+    else if (key === "extra_life") s.lives += 1;
+    else if (key === "lucky_scavenger") s.dropChanceBonus += 0.03;
+    else if (key === "shorter_overheat") s.lockoutReductionPct += 0.15;
+    setCores(s.cores);
+    setShopPurchaseCounts({ ...s.shopPurchaseCounts });
+    if (key === "extra_life") setLives(s.lives);
+  }, []);
+
+  const closeShop = useCallback(() => {
+    const s = stateRef.current;
+    s.shopOpen = false;
+    s.merchant = null;
+    setShopOpen(false);
+  }, []);
+
   const startGame = useCallback(
     (chosenMode) => {
       const s = stateRef.current;
@@ -640,6 +820,9 @@ export default function AsteroidsGame() {
       setDistance(0);
       setLives(s.lives);
       setActivePowerupsUi([]);
+      setShopOpen(false);
+      setCores(0);
+      setShopPurchaseCounts({});
       setGameOver(false);
       setPaused(false);
       setStarted(true);
@@ -647,7 +830,8 @@ export default function AsteroidsGame() {
       setSubmitError("");
 
       sessionTokenRef.current = null;
-      fetch("/api/games/asteroids/session", { method: "POST" })
+      const sessionSlug = chosenMode === "chase" ? "asteroids-chase" : "asteroids-classic";
+      fetch(`/api/games/${sessionSlug}/session`, { method: "POST" })
         .then((res) => res.json())
         .then((data) => {
           sessionTokenRef.current = data.token ?? null;
@@ -697,21 +881,31 @@ export default function AsteroidsGame() {
         const unlimitedFire = "unlimited_fire" in s.activePowerups;
         const scoreMult = "score_multiplier" in s.activePowerups ? SCORE_MULTIPLIER_FACTOR : 1;
 
-        // Weapon heat: rises smoothly the whole time fire is held (not in
-        // jumps per shot), drains fast (empties over exactly the lockout)
-        // while locked, drains slow whenever it's neither — see HEAT_*
-        // comments in the engine file.
-        if (now < s.heatLockedUntil) {
-          s.heat = Math.max(0, s.heat - (HEAT_MAX / (OVERHEAT_LOCKOUT_MS / 1000)) * dt);
-        } else if (keys.fire && !unlimitedFire) {
-          s.heat = Math.min(HEAT_MAX, s.heat + HEAT_GAIN_PER_SECOND * dt);
-          if (s.heat >= HEAT_MAX) s.heatLockedUntil = now + OVERHEAT_LOCKOUT_MS;
+        // Weapon heat: chase mode only — classic keeps its original
+        // unlimited-sustained-fire feel, just cooldown-limited like always.
+        // Rises smoothly the whole time fire is held (not in jumps per
+        // shot), drains fast (empties over exactly the lockout) while
+        // locked, drains slow whenever it's neither — see HEAT_* comments
+        // in the engine file. Shop purchases raise the effective max and
+        // cool rate for the rest of the run.
+        const effectiveHeatMax = HEAT_MAX + s.heatMaxBonus;
+        const effectiveCoolRate = HEAT_COOL_RATE * (1 + s.coolRateBonusPct);
+        const effectiveLockoutMs = OVERHEAT_LOCKOUT_MS * (1 - s.lockoutReductionPct);
+        if (!chase) {
+          // no-op: heat stays at 0, never locks out
+        } else if (now < s.heatLockedUntil) {
+          s.heat = Math.max(0, s.heat - (effectiveHeatMax / (effectiveLockoutMs / 1000)) * dt);
+        } else if (keys.fire && !unlimitedFire && !s.shopOpen) {
+          s.heat = Math.min(effectiveHeatMax, s.heat + HEAT_GAIN_PER_SECOND * dt);
+          if (s.heat >= effectiveHeatMax) s.heatLockedUntil = now + effectiveLockoutMs;
         } else {
-          s.heat = Math.max(0, s.heat - HEAT_COOL_RATE * dt);
+          s.heat = Math.max(0, s.heat - effectiveCoolRate * dt);
         }
 
-        if (chase) updateChaseShip(s, dt, keys, speedBoost);
-        else updateCenteredShip(s, dt, keys, speedBoost);
+        if (!s.shopOpen) {
+          if (chase) updateChaseShip(s, dt, keys, speedBoost);
+          else updateCenteredShip(s, dt, keys, speedBoost);
+        }
 
         let fireCooldown = chase
           ? chaseFireCooldownForElapsed(s.chaseElapsed)
@@ -720,7 +914,7 @@ export default function AsteroidsGame() {
         const bulletSpeed = chase
           ? chaseBulletSpeedForElapsed(s.chaseElapsed)
           : BULLET_SPEED;
-        if (keys.fire && now - s.lastFireTime > fireCooldown && now >= s.heatLockedUntil) {
+        if (keys.fire && now - s.lastFireTime > fireCooldown && now >= s.heatLockedUntil && !s.shopOpen) {
           s.lastFireTime = now;
           const nose = {
             x: ship.x + Math.sin(ship.angle) * SHIP_RADIUS,
@@ -747,8 +941,14 @@ export default function AsteroidsGame() {
         }
 
         if (chase) {
-          s.chaseElapsed += dt;
-          s.distance += s.scrollSpeed * dt;
+          // Shop interlude: distance/difficulty timer freeze, but asteroids
+          // keep flying and spawning at whatever rate was already in
+          // effect — the "rocks bouncing off the shield" animation needs
+          // them alive, it's only progression that's on hold.
+          if (!s.shopOpen) {
+            s.chaseElapsed += dt;
+            s.distance += s.scrollSpeed * dt;
+          }
           s.scrollSpeed = chaseScrollSpeedForElapsed(s.chaseElapsed);
           s.spawnInterval = chaseSpawnIntervalForElapsed(s.chaseElapsed);
 
@@ -770,10 +970,12 @@ export default function AsteroidsGame() {
             if (star.x < 0) star.x += BOARD_W;
           }
 
-          const newDistanceScore = Math.floor(s.distance * CHASE_DISTANCE_SCORE_PER_PX);
-          if (newDistanceScore > s.distanceScore) {
-            s.score += newDistanceScore - s.distanceScore;
-            s.distanceScore = newDistanceScore;
+          if (!s.shopOpen) {
+            const newDistanceScore = Math.floor(s.distance * CHASE_DISTANCE_SCORE_PER_PX);
+            if (newDistanceScore > s.distanceScore) {
+              s.score += newDistanceScore - s.distanceScore;
+              s.distanceScore = newDistanceScore;
+            }
           }
 
           s.distanceUiAccum += dt * 1000;
@@ -932,17 +1134,14 @@ export default function AsteroidsGame() {
               if (!chase) s.score += pts * scoreMult;
               spawnParticles(s, a.x, a.y, "#c9c9e8");
               const dropChance =
-                now < s.powerupDropSuppressUntil
+                (now < s.powerupDropSuppressUntil
                   ? POWERUP_SUPPRESSED_DROP_CHANCE
-                  : POWERUP_DROP_CHANCE;
+                  : POWERUP_DROP_CHANCE) + s.dropChanceBonus;
               if (Math.random() < dropChance) {
                 const type = chase
                   ? rollPowerupType("chase", s.chaseElapsed)
                   : rollPowerupType("centered", s.wave);
-                const powerup = chase
-                  ? makeChasePowerup(s.nextId++, type, a.x, a.y, now, s.scrollSpeed)
-                  : makePowerup(s.nextId++, type, a.x, a.y, now);
-                s.powerups.push(powerup);
+                s.powerups.push(makePowerup(s.nextId++, type, a.x, a.y, now));
               }
               const children = splitAsteroid(a, s.nextId);
               s.nextId += children.length;
@@ -964,15 +1163,26 @@ export default function AsteroidsGame() {
         if (s.boss && s.boss.health <= 0) {
           bossDefeated = true;
           s.score += BOSS_SCORE * scoreMult;
+          // Guaranteed reward for the kill itself — unlike the random
+          // extra_life powerup, this isn't capped at MAX_LIVES.
+          s.lives += 1;
           spawnParticles(s, s.boss.x, s.boss.y, "#ff5e5e", 40);
+          s.cores += coresForBossTier(s.boss.tier);
           s.boss = null;
           s.bossesDefeated += 1;
           s.nextBossAt = s.chaseElapsed + BOSS_INTERVAL_SECONDS;
+          s.shopOpen = true;
+          s.merchant = { x: ship.x + MERCHANT_OFFSET_X, y: ship.y };
+          setLives(s.lives);
+          setCores(s.cores);
+          setShopOpen(true);
         }
         if (deadAsteroids.size > 0 || collectedPowerups.size > 0 || bossDefeated) setScore(s.score);
 
-        // Ship vs asteroid, boss, and boss bullets.
-        if (now >= ship.invulnUntil && !shielded) {
+        // Ship vs asteroid, boss, and boss bullets. Untouchable while the
+        // shop is open — the merchant's shield is the in-world reason, this
+        // is the actual guarantee.
+        if (now >= ship.invulnUntil && !shielded && !s.shopOpen) {
           let hit = false;
           for (const a of s.asteroids) {
             const { radius } = ASTEROID_SIZES[a.size];
@@ -1004,6 +1214,24 @@ export default function AsteroidsGame() {
           if (hit) {
             spawnParticles(s, ship.x, ship.y, "#ff5e9c", 16);
             respawnShip();
+          }
+        }
+
+        // Merchant's shield vs asteroids — the "rocks bouncing off the
+        // shield" part of the shop animation. No score/drops from these;
+        // it's a scripted interlude, not real combat.
+        if (s.shopOpen && s.merchant) {
+          const shieldX = s.merchant.x + MERCHANT_SHIELD_OFFSET_X;
+          const shieldY = s.merchant.y;
+          const deadAtShield = new Set();
+          for (const a of s.asteroids) {
+            if (circlesCollide(a.x, a.y, ASTEROID_SIZES[a.size].radius, shieldX, shieldY, MERCHANT_SHIELD_RADIUS)) {
+              deadAtShield.add(a.id);
+              spawnParticles(s, a.x, a.y, "#5ec8ff", 8);
+            }
+          }
+          if (deadAtShield.size > 0) {
+            s.asteroids = s.asteroids.filter((a) => !deadAtShield.has(a.id));
           }
         }
 
@@ -1076,22 +1304,22 @@ export default function AsteroidsGame() {
         case "ArrowLeft":
         case "a":
         case "A":
-          keysRef.current.left = true;
+          setDirectionKey("left", true);
           break;
         case "ArrowRight":
         case "d":
         case "D":
-          keysRef.current.right = true;
+          setDirectionKey("right", true);
           break;
         case "ArrowUp":
         case "w":
         case "W":
-          keysRef.current.up = true;
+          setDirectionKey("up", true);
           break;
         case "ArrowDown":
         case "s":
         case "S":
-          keysRef.current.down = true;
+          setDirectionKey("down", true);
           break;
         case " ":
           keysRef.current.fire = true;
@@ -1108,22 +1336,22 @@ export default function AsteroidsGame() {
         case "ArrowLeft":
         case "a":
         case "A":
-          keysRef.current.left = false;
+          setDirectionKey("left", false);
           break;
         case "ArrowRight":
         case "d":
         case "D":
-          keysRef.current.right = false;
+          setDirectionKey("right", false);
           break;
         case "ArrowUp":
         case "w":
         case "W":
-          keysRef.current.up = false;
+          setDirectionKey("up", false);
           break;
         case "ArrowDown":
         case "s":
         case "S":
-          keysRef.current.down = false;
+          setDirectionKey("down", false);
           break;
         case " ":
           keysRef.current.fire = false;
@@ -1138,20 +1366,43 @@ export default function AsteroidsGame() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [togglePause]);
+  }, [togglePause, setDirectionKey]);
 
   return (
     <div className="flex w-full flex-col items-center gap-4">
       <div className="flex w-full flex-row flex-wrap items-start justify-center gap-4">
         <div className="flex flex-col items-center gap-3">
-          <div className="relative" style={{ width: BOARD_W, maxWidth: "100%" }}>
-            <canvas
-              ref={canvasRef}
-              width={BOARD_W}
-              height={BOARD_H}
-              className="w-full rounded-lg bg-black/40 ring-1 ring-white/10"
-              style={{ aspectRatio: `${BOARD_W} / ${BOARD_H}` }}
-            />
+          {/* Outer box stays unrotated, sized to whatever the rotated
+              canvas's footprint is (dimensions swap at 90/270) — the menu
+              text and buttons live here, upright, filling that footprint.
+              Only the canvas inside gets the rotation transform: rotating
+              is about reorienting the *game view* for a comfortable
+              physical setup, not making the player tilt their head to
+              read a menu. */}
+          <div
+            className="relative"
+            style={{
+              width: rotatedSideways ? boardRenderH : boardRenderW,
+              height: rotatedSideways ? boardRenderW : boardRenderH,
+              maxWidth: "100%",
+            }}
+          >
+            <div
+              className="absolute inset-0"
+              style={{
+                width: boardRenderW,
+                height: boardRenderH,
+                transform: canvasTransform,
+                transformOrigin: "top left",
+              }}
+            >
+              <canvas
+                ref={canvasRef}
+                width={BOARD_W}
+                height={BOARD_H}
+                className="h-full w-full rounded-lg bg-black/40 ring-1 ring-white/10"
+              />
+            </div>
             {(!started || gameOver || paused) && (
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg bg-black/70 p-3 text-center">
                 {paused && !gameOver ? (
@@ -1250,7 +1501,7 @@ export default function AsteroidsGame() {
                         onClick={() => startGame("centered")}
                         className="rounded-full bg-white/10 px-5 py-2 font-medium text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20"
                       >
-                        Centered
+                        Classic
                       </button>
                       <button
                         onClick={() => startGame("chase")}
@@ -1260,7 +1511,7 @@ export default function AsteroidsGame() {
                       </button>
                     </div>
                     <p className="max-w-[16rem] text-xs text-white/40">
-                      Centered: drift in an open arena that wraps at the
+                      Classic: drift in an open arena that wraps at the
                       edges. Chase: endless rightward flight, one life —
                       dodge or shoot what&apos;s in your way.
                     </p>
@@ -1268,6 +1519,76 @@ export default function AsteroidsGame() {
                 )}
               </div>
             )}
+
+            {shopOpen && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 rounded-b-lg bg-black/80 p-3">
+                <p className="font-heading text-lg text-white">
+                  Trader — <span className="text-[#ffd15e]">{cores}</span> cores
+                </p>
+                <div className="pointer-events-auto flex flex-wrap justify-center gap-2">
+                  {Object.entries(SHOP_ITEMS).map(([key, item]) => {
+                    const bought = shopPurchaseCounts[key] || 0;
+                    const cost = shopItemCost(key, bought);
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => buyItem(key)}
+                        disabled={cores < cost}
+                        className="flex w-28 flex-col items-center gap-0.5 rounded-lg bg-white/10 px-2 py-2 text-center text-xs text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20 disabled:opacity-40"
+                      >
+                        <span className="font-medium">{item.label}</span>
+                        <span className="text-white/60">{item.desc}</span>
+                        <span className="font-heading text-[#ffd15e]">{cost}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={closeShop}
+                  className="pointer-events-auto rounded-full bg-[#ff5e9c]/20 px-5 py-1.5 text-sm font-medium text-white ring-1 ring-[#ff5e9c]/40 backdrop-blur-sm transition-colors hover:bg-[#ff5e9c]/30"
+                >
+                  Continue
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* One row: phone-only powerup status + pause (hidden at sm+,
+              where the sidebar carries them instead so they don't show
+              twice) sit beside Rotate view, which stays visible at every
+              size. Side by side rather than stacked — stacking pushed the
+              controls hint/D-pad down by a lot on phones. */}
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {activePowerupsUi.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 sm:hidden">
+                {activePowerupsUi.map((p) => (
+                  <div key={p.type} className="flex items-center gap-1">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`/games/asteroids/powerups/${p.type}.png`}
+                      alt=""
+                      className="h-6 w-6"
+                    />
+                    <span className="font-heading text-sm text-white">
+                      {p.remaining}s
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={togglePause}
+              disabled={!started || gameOver}
+              className="rounded-full bg-white/10 px-4 py-1.5 text-xs font-medium text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20 disabled:opacity-40 sm:hidden"
+            >
+              {paused ? "Resume" : "Pause"}
+            </button>
+            <button
+              onClick={() => setCanvasRotation((r) => (r + 90) % 360)}
+              className="rounded-full bg-white/10 px-4 py-1.5 text-xs font-medium text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20"
+            >
+              ⟳ Rotate view
+            </button>
           </div>
 
           <p className="text-xs text-white/40">
@@ -1275,6 +1596,66 @@ export default function AsteroidsGame() {
               ? "arrows / WASD move · space fire · Esc pause. One life."
               : "← → / A D rotate · ↑ / W thrust · ↓ / S brake · space fire · Esc pause."}
           </p>
+
+          {/* Touch controls, phones/small screens only. Same keysRef flags
+              as keyboard input, so they drive rotation+thrust+brake in
+              Classic and direct movement in Chase automatically — no
+              mode-specific button set needed. */}
+          <div className="mx-auto flex w-full max-w-xs shrink-0 items-center justify-between gap-8 sm:hidden">
+            <div className="grid shrink-0 grid-cols-3 grid-rows-3 gap-1.5">
+              <button
+                onPointerDown={() => setDirectionKey("up", true)}
+                onPointerUp={() => setDirectionKey("up", false)}
+                onPointerLeave={() => setDirectionKey("up", false)}
+                onPointerCancel={() => setDirectionKey("up", false)}
+                aria-label={mode === "chase" ? "Move up" : "Thrust"}
+                className="col-start-2 row-start-1 h-12 w-12 touch-manipulation select-none rounded-full bg-white/10 text-xl text-white ring-1 ring-white/15 backdrop-blur-sm active:bg-white/25"
+              >
+                ▲
+              </button>
+              <button
+                onPointerDown={() => setDirectionKey("left", true)}
+                onPointerUp={() => setDirectionKey("left", false)}
+                onPointerLeave={() => setDirectionKey("left", false)}
+                onPointerCancel={() => setDirectionKey("left", false)}
+                aria-label={mode === "chase" ? "Move left" : "Rotate left"}
+                className="col-start-1 row-start-2 h-12 w-12 touch-manipulation select-none rounded-full bg-white/10 text-xl text-white ring-1 ring-white/15 backdrop-blur-sm active:bg-white/25"
+              >
+                ◀
+              </button>
+              <button
+                onPointerDown={() => setDirectionKey("right", true)}
+                onPointerUp={() => setDirectionKey("right", false)}
+                onPointerLeave={() => setDirectionKey("right", false)}
+                onPointerCancel={() => setDirectionKey("right", false)}
+                aria-label={mode === "chase" ? "Move right" : "Rotate right"}
+                className="col-start-3 row-start-2 h-12 w-12 touch-manipulation select-none rounded-full bg-white/10 text-xl text-white ring-1 ring-white/15 backdrop-blur-sm active:bg-white/25"
+              >
+                ▶
+              </button>
+              <button
+                onPointerDown={() => setDirectionKey("down", true)}
+                onPointerUp={() => setDirectionKey("down", false)}
+                onPointerLeave={() => setDirectionKey("down", false)}
+                onPointerCancel={() => setDirectionKey("down", false)}
+                aria-label={mode === "chase" ? "Move down" : "Brake"}
+                className="col-start-2 row-start-3 h-12 w-12 touch-manipulation select-none rounded-full bg-white/10 text-xl text-white ring-1 ring-white/15 backdrop-blur-sm active:bg-white/25"
+              >
+                ▼
+              </button>
+            </div>
+
+            <button
+              onPointerDown={() => (keysRef.current.fire = true)}
+              onPointerUp={() => (keysRef.current.fire = false)}
+              onPointerLeave={() => (keysRef.current.fire = false)}
+              onPointerCancel={() => (keysRef.current.fire = false)}
+              aria-label="Fire"
+              className="h-16 w-16 shrink-0 touch-manipulation select-none rounded-full bg-[#ff5e9c]/15 text-sm font-medium text-white ring-1 ring-[#ff5e9c]/40 backdrop-blur-sm active:bg-[#ff5e9c]/30"
+            >
+              Fire
+            </button>
+          </div>
         </div>
 
         <div className="flex w-32 flex-col gap-4 font-body text-white/80 sm:w-40">
@@ -1304,7 +1685,7 @@ export default function AsteroidsGame() {
           </div>
 
           {activePowerupsUi.length > 0 && (
-            <div>
+            <div className="hidden sm:block">
               <div className="text-xs uppercase tracking-wide text-white/40">
                 Powerups
               </div>
@@ -1329,14 +1710,41 @@ export default function AsteroidsGame() {
           <button
             onClick={togglePause}
             disabled={!started || gameOver}
-            className="rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20 disabled:opacity-40"
+            className="hidden rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20 disabled:opacity-40 sm:block"
           >
             {paused ? "Resume" : "Pause"}
           </button>
 
           <div>
+            <div className="flex items-center justify-between text-xs uppercase tracking-wide text-white/40">
+              <label htmlFor="asteroids-size">Board size</label>
+              <button
+                onClick={() => {
+                  manualBoardSizeRef.current = false;
+                  applyBoardFit();
+                }}
+                className="normal-case text-white/50 underline underline-offset-2 hover:text-white/80"
+              >
+                Default
+              </button>
+            </div>
+            <input
+              id="asteroids-size"
+              type="range"
+              min={MIN_BOARD_RENDER_W}
+              max={BOARD_W}
+              value={boardRenderW}
+              onChange={(e) => {
+                manualBoardSizeRef.current = true;
+                setBoardRenderW(Number(e.target.value));
+              }}
+              className="mt-1 w-full accent-[#ff5e9c]"
+            />
+          </div>
+
+          <div>
             <Link
-              href="/games/leaderboard?game=asteroids"
+              href={`/games/leaderboard?game=${mode === "chase" ? "asteroids-chase" : "asteroids-classic"}`}
               className="text-xs uppercase tracking-wide text-white/40 underline underline-offset-2 hover:text-white/70"
             >
               Leaderboard

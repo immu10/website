@@ -1,4 +1,4 @@
-// app/api/games/asteroids/score/route.js  ->  POST /api/games/asteroids/score
+// app/api/games/asteroids-chase/score/route.js  ->  POST /api/games/asteroids-chase/score
 //
 // Validates and records a leaderboard submission. Every check here must be
 // server-side and authoritative — this route can be hit directly, so nothing
@@ -31,7 +31,7 @@ export async function POST(request) {
   }
 
   const ip = getClientIp(request);
-  const allowed = await checkRateLimit("asteroids-score", ip, 20, "1 m");
+  const allowed = await checkRateLimit("asteroids-chase-score", ip, 20, "1 m");
   if (!allowed) {
     return Response.json(
       { error: "Too many attempts, try again later." },
@@ -73,7 +73,7 @@ export async function POST(request) {
   // GETDEL: read the anti-cheat session and delete it in one step, so a
   // token can only ever be redeemed once (no replaying it for multiple
   // submissions). Unrelated to the login session above.
-  const playSession = await redis.getdel(`asteroids:session:${token}`);
+  const playSession = await redis.getdel(`asteroids-chase:session:${token}`);
   if (!playSession || typeof playSession.issuedAt !== "number") {
     return Response.json(
       { error: "invalid or expired session" },
@@ -99,11 +99,11 @@ export async function POST(request) {
     // whether the score actually changed, so the hash below doesn't record
     // a "score" that doesn't match what's actually in the sorted set.
     const changed = await redis.zadd(
-      "asteroids:leaderboard",
+      "asteroids-chase:leaderboard",
       { gt: true, ch: true },
       { score, member: id }
     );
-    await redis.hset(`asteroids:entry:${id}`, {
+    await redis.hset(`asteroids-chase:entry:${id}`, {
       name: displayName,
       ip,
       ts: Date.now(),
@@ -111,16 +111,16 @@ export async function POST(request) {
     });
   } else {
     const id = randomUUID();
-    await redis.hset(`asteroids:entry:${id}`, {
+    await redis.hset(`asteroids-chase:entry:${id}`, {
       name: displayName,
       score,
       ip,
       ts: Date.now(),
     });
-    await redis.zadd("asteroids:leaderboard", { score, member: id });
+    await redis.zadd("asteroids-chase:leaderboard", { score, member: id });
   }
 
-  await redis.zremrangebyrank("asteroids:leaderboard", 0, -(MAX_ENTRIES + 1));
+  await redis.zremrangebyrank("asteroids-chase:leaderboard", 0, -(MAX_ENTRIES + 1));
 
   return Response.json({ ok: true });
 }

@@ -297,6 +297,39 @@ export function makeBoss(now, tier) {
   };
 }
 
+// --- Shop (chase mode, opens right after each boss kill) ---
+// Cores are a separate currency from score, earned only from boss kills —
+// spending them doesn't cost you anything on the leaderboard. Each item can
+// be bought repeatedly in a run; every repeat purchase of the *same* item
+// costs more (SHOP_COST_GROWTH), so cores naturally spread across items
+// rather than all piling into one stat.
+
+export function coresForBossTier(tier) {
+  return 3 + tier;
+}
+
+export const SHOP_ITEMS = {
+  heat_capacity: { label: "Heat Capacity", desc: "+15 max heat", baseCost: 3 },
+  coolant_boost: { label: "Coolant Boost", desc: "+25% cool rate", baseCost: 3 },
+  extra_life: { label: "Extra Life", desc: "+1 life", baseCost: 5 },
+  lucky_scavenger: { label: "Lucky Scavenger", desc: "+3% powerup drops", baseCost: 4 },
+  shorter_overheat: { label: "Shorter Overheat", desc: "-15% lockout time", baseCost: 4 },
+};
+
+export const SHOP_COST_GROWTH = 1.5;
+
+export function shopItemCost(itemKey, timesBought) {
+  return Math.round(SHOP_ITEMS[itemKey].baseCost * Math.pow(SHOP_COST_GROWTH, timesBought));
+}
+
+// Merchant ship + shield shown while the shop is open. Asteroids that reach
+// the shield are destroyed there instead of reaching the player — the
+// player is untouchable for the whole interlude regardless, this is just
+// the in-world reason why.
+export const MERCHANT_OFFSET_X = 100; // px right of the ship, spawn position
+export const MERCHANT_SHIELD_OFFSET_X = 55; // further right of the merchant
+export const MERCHANT_SHIELD_RADIUS = 50;
+
 // --- Powerups ---
 // Different timed buffs stack freely (shield + rapid fire + speed boost can
 // all be running at once); picking up a second of the *same* type just
@@ -316,7 +349,9 @@ export const POWERUP_TYPES = {
   extra_life: { duration: 0, instant: true, unlockWave: 1, unlockSeconds: 0 },
   speed_boost: { duration: 8000, instant: false, unlockWave: 2, unlockSeconds: 20 },
   spread_shot: { duration: 8000, instant: false, unlockWave: 3, unlockSeconds: 40 },
-  unlimited_fire: { duration: 8000, instant: false, unlockWave: 3, unlockSeconds: 40 },
+  // chaseOnly: classic mode has no weapon heat, so this would be a no-op
+  // pickup there — excluded from its drop pool entirely.
+  unlimited_fire: { duration: 8000, instant: false, unlockWave: 3, unlockSeconds: 40, chaseOnly: true },
   score_multiplier: { duration: 10000, instant: false, unlockWave: 4, unlockSeconds: 60 },
   bomb: { duration: 0, instant: true, unlockWave: 5, unlockSeconds: 80 },
 };
@@ -327,7 +362,7 @@ export const POWERUP_DROP_CHANCE = 0.15;
 // back) trivializes the run instead of being an occasional boost.
 export const POWERUP_SUPPRESSED_DROP_CHANCE = 0.04;
 export const POWERUP_SUPPRESS_MS = 6000;
-export const POWERUP_RADIUS = 14;
+export const POWERUP_RADIUS = 17; // +20% over the original 14
 export const POWERUP_LIFETIME_MS = 9000;
 const POWERUP_DRIFT_SPEED_MIN = 15;
 const POWERUP_DRIFT_SPEED_MAX = 40;
@@ -344,16 +379,20 @@ export const SPEED_BOOST_MULTIPLIER = 1.6;
 // unlocked yet, so a drop always has something to give.
 export function rollPowerupType(mode, progress) {
   const key = mode === "chase" ? "unlockSeconds" : "unlockWave";
-  const unlocked = Object.entries(POWERUP_TYPES)
-    .filter(([, cfg]) => progress >= cfg[key])
-    .map(([type]) => type);
-  const pool = unlocked.length > 0 ? unlocked : Object.keys(POWERUP_TYPES);
+  const eligible = Object.entries(POWERUP_TYPES).filter(
+    ([, cfg]) => !cfg.chaseOnly || mode === "chase"
+  );
+  const unlocked = eligible.filter(([, cfg]) => progress >= cfg[key]).map(([type]) => type);
+  const pool = unlocked.length > 0 ? unlocked : eligible.map(([type]) => type);
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-// Drifts slowly in a random direction so it reads as a pickup drifting in
-// the wreckage, not another asteroid. Used by centered mode, whose arena
-// wraps at the edges.
+// Drifts slowly in a random direction so it reads as a pickup hovering in
+// the wreckage, not another asteroid — same in both modes now. It used to
+// inherit the chase-mode scroll speed, which at higher difficulty blew it
+// past the ship before there was any real chance to grab it; now it just
+// hovers near where it dropped and expires on its own timer
+// (POWERUP_LIFETIME_MS) instead of racing off-screen.
 export function makePowerup(id, type, x, y, now) {
   const angle = Math.random() * Math.PI * 2;
   const speed = POWERUP_DRIFT_SPEED_MIN + Math.random() * (POWERUP_DRIFT_SPEED_MAX - POWERUP_DRIFT_SPEED_MIN);
@@ -364,21 +403,6 @@ export function makePowerup(id, type, x, y, now) {
     y,
     vx: Math.cos(angle) * speed,
     vy: Math.sin(angle) * speed,
-    bornAt: now,
-  };
-}
-
-// Chase mode has no wrap — a pickup that just drifted in place would get
-// left behind by the scroll instantly, so it carries roughly the same
-// leftward velocity as the asteroid it dropped from.
-export function makeChasePowerup(id, type, x, y, now, scrollSpeed) {
-  return {
-    id,
-    type,
-    x,
-    y,
-    vx: -scrollSpeed * (0.85 + Math.random() * 0.3),
-    vy: (Math.random() - 0.5) * 40,
     bornAt: now,
   };
 }

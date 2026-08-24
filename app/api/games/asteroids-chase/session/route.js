@@ -1,9 +1,11 @@
-// app/api/games/asteroids/session/route.js  ->  POST /api/games/asteroids/session
+// app/api/games/asteroids-chase/session/route.js  ->  POST /api/games/asteroids-chase/session
 //
 // Mints a one-time-use session token when a game starts. The score endpoint
 // requires this token and uses its server-recorded issue time to sanity-check
 // the submitted score against how much time has actually elapsed — see
-// leaderboardRules.js for the reasoning.
+// leaderboardRules.js for the reasoning. Classic and Chase modes have their
+// own session/score/leaderboard routes (and their own Redis keyspace) since
+// they score completely differently and are kept as separate boards.
 
 import { randomUUID } from "crypto";
 import { getRedis, redisConfigured } from "@/app/lib/redis";
@@ -19,7 +21,7 @@ export async function POST(request) {
   }
 
   const ip = getClientIp(request);
-  const allowed = await checkRateLimit("asteroids-session", ip, 20, "1 m");
+  const allowed = await checkRateLimit("asteroids-chase-session", ip, 20, "1 m");
   if (!allowed) {
     return Response.json(
       { error: "Too many attempts, try again later." },
@@ -31,7 +33,7 @@ export async function POST(request) {
   // ip recorded for the owner's own moderation use only (viewed directly in
   // the Upstash console, never returned by any API response) — same
   // treatment as the entry-level ip in the score route.
-  await getRedis().setex(`asteroids:session:${token}`, SESSION_TTL_SECONDS, {
+  await getRedis().setex(`asteroids-chase:session:${token}`, SESSION_TTL_SECONDS, {
     issuedAt: Date.now(),
     ip,
   });
