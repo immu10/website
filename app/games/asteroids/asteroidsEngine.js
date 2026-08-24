@@ -11,17 +11,35 @@ export const INITIAL_LIVES = 3;
 // Ship physics.
 export const SHIP_RADIUS = 12;
 export const ROTATION_SPEED = 3.6; // rad/sec
-export const THRUST_ACCEL = 260; // px/sec^2
-export const MAX_SPEED = 320; // px/sec
+export const THRUST_ACCEL = 437; // px/sec^2
+export const MAX_SPEED = 538; // px/sec
 export const DRAG = 0.55; // fraction of velocity shed per second — a light
 // arcade-friendly drag so the ship coasts but doesn't drift forever, unlike
 // true frictionless Asteroids physics.
+export const BRAKE_DRAG = 3.2; // held brake sheds velocity much faster than
+// passive drag, on both axes regardless of facing — not an instant stop,
+// but a firm, deliberate one.
 export const RESPAWN_INVULN_MS = 2000;
 
 // Bullets.
 export const BULLET_SPEED = 480; // px/sec
 export const BULLET_LIFETIME_MS = 900;
 export const FIRE_COOLDOWN_MS = 250;
+
+// Weapon heat: the fire cooldown alone doesn't stop someone from just
+// holding the trigger down forever at the max sustainable rate, so heat
+// builds continuously while the fire key is held — not in discrete jumps
+// per shot, so the gauge reads as a smooth rise rather than a staircase —
+// and drains passively whenever it isn't. Hitting max locks firing out for
+// a beat, draining back to empty over exactly that lockout so the gauge
+// reads as "wait, then go" rather than a static block. Spread shot costs
+// the same heat as a single shot (it's meant to be a strict upgrade, not a
+// tradeoff), since heat no longer cares how many bullets a shot fired. The
+// unlimited_fire powerup exempts the ship from heat entirely.
+export const HEAT_MAX = 100;
+export const HEAT_GAIN_PER_SECOND = 20;
+export const HEAT_COOL_RATE = 30; // per second, while under max
+export const OVERHEAT_LOCKOUT_MS = 1200;
 
 // Asteroids: three size tiers. Splitting goes large -> 2 medium -> 2 small
 // -> gone, classic-Asteroids style.
@@ -116,7 +134,7 @@ export const CHASE_SHIP_X_MAX = Math.round(BOARD_W * 0.4);
 export const CHASE_INITIAL_LIVES = 1;
 
 export const CHASE_ACCEL = 900; // px/sec^2, both axes
-export const CHASE_MAX_SPEED = 380; // px/sec, both axes
+export const CHASE_MAX_SPEED = 538; // px/sec, both axes
 export const CHASE_DRAG = 4.5; // heavier than centered mode's DRAG — with
 // only one life, snappy stops matter more than coasting.
 
@@ -203,13 +221,16 @@ export const BOSS_BOB_AMPLITUDE = 70; // px, vertical weave once settled
 export const BOSS_BOB_SPEED = 0.6; // rad/sec-ish
 export const BOSS_FIRE_INTERVAL_MS = 320; // tier 0 baseline
 export const BOSS_FIRE_INTERVAL_MIN_MS = 150;
-export const BOSS_BULLET_SPEED = 300; // tier 0 baseline
+export const BOSS_BULLET_SPEED = 220; // tier 0 baseline
 export const BOSS_BULLET_RADIUS = 4;
 
 // Can't be damaged until it's fully flown in and held position for a beat —
 // otherwise a lucky shot during the entry animation kills it before it's
-// even had a chance to fight back.
-export const BOSS_INTRO_GRACE_MS = 1200;
+// even had a chance to fight back. Bullets are gated on this same deadline
+// (see the fire check in AsteroidsGame.js), so immunity ending and it
+// opening fire happen in the same frame — no window where it's shooting
+// but still can't be shot back.
+export const BOSS_INTRO_GRACE_MS = 900;
 
 // Laser: a second attack alongside the regular bullet spam. Each beam locks
 // onto the ship's y position the moment it starts charging (not tracked
@@ -295,6 +316,7 @@ export const POWERUP_TYPES = {
   extra_life: { duration: 0, instant: true, unlockWave: 1, unlockSeconds: 0 },
   speed_boost: { duration: 8000, instant: false, unlockWave: 2, unlockSeconds: 20 },
   spread_shot: { duration: 8000, instant: false, unlockWave: 3, unlockSeconds: 40 },
+  unlimited_fire: { duration: 8000, instant: false, unlockWave: 3, unlockSeconds: 40 },
   score_multiplier: { duration: 10000, instant: false, unlockWave: 4, unlockSeconds: 60 },
   bomb: { duration: 0, instant: true, unlockWave: 5, unlockSeconds: 80 },
 };

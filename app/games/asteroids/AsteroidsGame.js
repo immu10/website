@@ -11,6 +11,7 @@ import {
   THRUST_ACCEL,
   MAX_SPEED,
   DRAG,
+  BRAKE_DRAG,
   RESPAWN_INVULN_MS,
   BULLET_SPEED,
   BULLET_LIFETIME_MS,
@@ -64,6 +65,10 @@ import {
   BOSS_LASER_RECHARGE_MS,
   BOSS_LASER_ACTIVE_MS,
   BOSS_LASER_HALF_WIDTH,
+  HEAT_MAX,
+  HEAT_GAIN_PER_SECOND,
+  HEAT_COOL_RATE,
+  OVERHEAT_LOCKOUT_MS,
 } from "./asteroidsEngine";
 import { useAuth } from "@/app/games/AuthContext";
 import GuestIcon from "@/app/games/GuestIcon";
@@ -80,6 +85,7 @@ const SPRITE_SRC = {
   speed_boost: "/games/asteroids/powerups/speed_boost.png",
   extra_life: "/games/asteroids/powerups/extra_life.png",
   bomb: "/games/asteroids/powerups/bomb.png",
+  unlimited_fire: "/games/asteroids/powerups/unlimited_fire.png",
 };
 
 const POWERUP_COLORS = {
@@ -90,6 +96,7 @@ const POWERUP_COLORS = {
   speed_boost: "#6effc2",
   extra_life: "#ff5e9c",
   bomb: "#ff5e5e",
+  unlimited_fire: "#a8e6ff",
 };
 
 function createStars() {
@@ -120,6 +127,9 @@ function createInitialState() {
     activePowerups: {},
     powerupUiAccum: 0,
     powerupDropSuppressUntil: 0,
+    brakeParticleAccum: 0,
+    heat: 0,
+    heatLockedUntil: 0,
     boss: null,
     bossBullets: [],
     nextBossAt: 0,
@@ -191,8 +201,21 @@ function updateCenteredShip(s, dt, keys, speedBoosted) {
       ship.vy = (ship.vy / speed) * maxSpeed;
     }
   }
-  ship.vx *= 1 - DRAG * dt;
-  ship.vy *= 1 - DRAG * dt;
+  const dragRate = keys.down ? BRAKE_DRAG : DRAG;
+  const dragFactor = Math.max(0, 1 - dragRate * dt);
+  ship.vx *= dragFactor;
+  ship.vy *= dragFactor;
+
+  // Brief skid trail while braking at any real speed — purely cosmetic,
+  // throttled so it's a trickle, not a burst every frame.
+  if (keys.down && Math.hypot(ship.vx, ship.vy) > 40) {
+    s.brakeParticleAccum += dt * 1000;
+    if (s.brakeParticleAccum > 60) {
+      s.brakeParticleAccum = 0;
+      spawnParticles(s, ship.x, ship.y, "#8cd2ff", 2);
+    }
+  }
+
   ship.x += ship.vx * dt;
   ship.y += ship.vy * dt;
   wrap(ship, BOARD_W, BOARD_H);
@@ -209,8 +232,11 @@ function applyPowerupPickup(s, type, now, scoreMult) {
   if (type === "extra_life") {
     s.lives = Math.min(MAX_LIVES, s.lives + 1);
   } else if (type === "bomb") {
+    const chase = s.mode === "chase";
     for (const a of s.asteroids) {
-      s.score += ASTEROID_SIZES[a.size].score * scoreMult;
+      // Chase mode's score is distance + boss bonuses only — a bomb clear
+      // is a panic button there, not a scoring move.
+      if (!chase) s.score += ASTEROID_SIZES[a.size].score * scoreMult;
       spawnParticles(s, a.x, a.y, "#c9c9e8");
     }
     s.asteroids = [];
@@ -479,6 +505,78 @@ export default function AsteroidsGame() {
           ctx.restore();
         }
         drawSprite(ctx, "ship", s.ship.x, s.ship.y, size, s.ship.angle);
+
+        // Brake flares: two small icy jets flashing forward from the nose,
+        // opposite the rear thruster and a different color so it doesn't
+        // read as "still accelerating." Oriented off the actual drift
+        // vector, not the ship's facing — with inertia, those two can
+        // point in completely different directions while spinning, and
+        // pinning it to ship.angle looked wrong whenever they diverged.
+        const brakeSpeed = Math.hypot(s.ship.vx, s.ship.vy);
+        const braking = s.running && s.mode === "centered" && keysRef.current.down && brakeSpeed > 15;
+        if (braking) {
+          const travelAngle = Math.atan2(s.ship.vx, -s.ship.vy);
+          ctx.save();
+          ctx.translate(s.ship.x, s.ship.y);
+          ctx.rotate(travelAngle);
+          ctx.fillStyle = "rgba(140,210,255,0.85)";
+          for (const side of [-1, 1]) {
+            ctx.beginPath();
+            ctx.moveTo(side * SHIP_RADIUS * 0.5, -SHIP_RADIUS * 0.6);
+            ctx.lineTo(side * SHIP_RADIUS * 0.9, -SHIP_RADIUS * 0.6);
+            ctx.lineTo(side * SHIP_RADIUS * 0.65, -SHIP_RADIUS * 1.3 - Math.random() * 4);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      }
+    }
+
+    // Weapon heat gauge — top-center ring, fills as heat rises. Blue/green
+    // while safe, amber then red as it climbs, and flashes red while
+    // locked out so "why can't I shoot" reads instantly.
+    if (s.started && !(s.gameOver && s.lives <= 0)) {
+      const heatCx = BOARD_W / 2;
+      const heatCy = 20;
+      const heatR = 13;
+      const locked = nowMs < s.heatLockedUntil;
+      const heatPct = Math.min(1, s.heat / HEAT_MAX);
+
+      ctx.beginPath();
+      ctx.arc(heatCx, heatCy, heatR, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      if (heatPct > 0) {
+        let fillColor;
+        if (locked) {
+          fillColor = Math.floor(nowMs / 150) % 2 === 0 ? "#ff5e5e" : "#ffb3b3";
+        } else if (heatPct > 0.75) {
+          fillColor = "#ff8a5e";
+        } else if (heatPct > 0.4) {
+          fillColor = "#ffd15e";
+        } else {
+          fillColor = "#8cd2ff";
+        }
+        const startAngle = -Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(heatCx, heatCy);
+        ctx.arc(heatCx, heatCy, heatR - 3, startAngle, startAngle + Math.PI * 2 * heatPct);
+        ctx.closePath();
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+      }
+
+      if (locked) {
+        ctx.fillStyle = "rgba(255,94,94,0.9)";
+        ctx.font = "600 10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("OVERHEATED", heatCx, heatCy + heatR + 12);
+        ctx.textAlign = "left";
       }
     }
   }, []);
@@ -596,7 +694,21 @@ export default function AsteroidsGame() {
         const rapidFire = "rapid_fire" in s.activePowerups;
         const spreadShot = "spread_shot" in s.activePowerups;
         const speedBoost = "speed_boost" in s.activePowerups;
+        const unlimitedFire = "unlimited_fire" in s.activePowerups;
         const scoreMult = "score_multiplier" in s.activePowerups ? SCORE_MULTIPLIER_FACTOR : 1;
+
+        // Weapon heat: rises smoothly the whole time fire is held (not in
+        // jumps per shot), drains fast (empties over exactly the lockout)
+        // while locked, drains slow whenever it's neither — see HEAT_*
+        // comments in the engine file.
+        if (now < s.heatLockedUntil) {
+          s.heat = Math.max(0, s.heat - (HEAT_MAX / (OVERHEAT_LOCKOUT_MS / 1000)) * dt);
+        } else if (keys.fire && !unlimitedFire) {
+          s.heat = Math.min(HEAT_MAX, s.heat + HEAT_GAIN_PER_SECOND * dt);
+          if (s.heat >= HEAT_MAX) s.heatLockedUntil = now + OVERHEAT_LOCKOUT_MS;
+        } else {
+          s.heat = Math.max(0, s.heat - HEAT_COOL_RATE * dt);
+        }
 
         if (chase) updateChaseShip(s, dt, keys, speedBoost);
         else updateCenteredShip(s, dt, keys, speedBoost);
@@ -608,7 +720,7 @@ export default function AsteroidsGame() {
         const bulletSpeed = chase
           ? chaseBulletSpeedForElapsed(s.chaseElapsed)
           : BULLET_SPEED;
-        if (keys.fire && now - s.lastFireTime > fireCooldown) {
+        if (keys.fire && now - s.lastFireTime > fireCooldown && now >= s.heatLockedUntil) {
           s.lastFireTime = now;
           const nose = {
             x: ship.x + Math.sin(ship.angle) * SHIP_RADIUS,
@@ -699,7 +811,7 @@ export default function AsteroidsGame() {
               boss.y =
                 boss.baseY +
                 Math.sin(((now - boss.spawnedAt) / 1000) * BOSS_BOB_SPEED) * BOSS_BOB_AMPLITUDE;
-              if (now - boss.lastFireTime > boss.fireInterval) {
+              if (now - boss.lastFireTime > boss.fireInterval && now >= boss.vulnerableAt) {
                 boss.lastFireTime = now;
                 // Aimed at wherever the ship is right now (not tracked or
                 // led afterward), so standing still is a guaranteed hit and
@@ -722,7 +834,7 @@ export default function AsteroidsGame() {
               // onto the ship's current spot and charges much faster — see
               // bossLaserBeamsForTier for how many beams a volley has.
               if (boss.laserState === "idle") {
-                if (now >= boss.nextLaserAt) {
+                if (now >= boss.nextLaserAt && now >= boss.vulnerableAt) {
                   boss.laserState = "charging";
                   boss.laserY = ship.y;
                   boss.laserPhaseAt = now;
@@ -815,7 +927,9 @@ export default function AsteroidsGame() {
             if (circlesCollide(b.x, b.y, 2, a.x, a.y, radius)) {
               deadBullets.add(b);
               deadAsteroids.add(a.id);
-              s.score += pts * scoreMult;
+              // Chase mode's score is distance + boss bonuses only —
+              // asteroids there are obstacles to clear, not points.
+              if (!chase) s.score += pts * scoreMult;
               spawnParticles(s, a.x, a.y, "#c9c9e8");
               const dropChance =
                 now < s.powerupDropSuppressUntil
@@ -1159,7 +1273,7 @@ export default function AsteroidsGame() {
           <p className="text-xs text-white/40">
             {mode === "chase"
               ? "arrows / WASD move · space fire · Esc pause. One life."
-              : "← → / A D rotate · ↑ / W thrust · space fire · Esc pause."}
+              : "← → / A D rotate · ↑ / W thrust · ↓ / S brake · space fire · Esc pause."}
           </p>
         </div>
 
