@@ -64,16 +64,44 @@ import {
   BOSS_LASER_RECHARGE_MS,
   BOSS_LASER_ACTIVE_MS,
   BOSS_LASER_HALF_WIDTH,
+  bossLaserPatternYs,
+  BOSS_BURST_SHOT_INTERVAL_MS,
+  BOSS_BURST_WINDUP_MS,
+  bossBurstSizeForTier,
+  bossBurstPauseForTier,
+  bossSpiralChanceForTier,
+  BOSS_SPIRAL_ARM_COUNT,
+  BOSS_SPIRAL_BULLET_SPEED,
+  BOSS_SPIRAL_DURATION_MS,
+  BOSS_SPIRAL_ROTATION_SPEED,
+  BOSS_SPIRAL_SHOT_INTERVAL_MS,
+  BOSS_SPIRAL_WINDUP_MS,
+  BOSS_PHASE_MIN_TIER,
+  BOSS_PHASE_INTERVAL_MS,
+  rollBossPhaseAttacks,
+  DEFLECTOR_RECHARGE_MS,
+  DEFLECTOR_FLASH_MS,
+  DEFLECTOR_HIT_GRACE_MS,
+  DUAL_FIRE_HEAT_MULTIPLIER,
+  DUAL_FIRE_OFFSET,
   HEAT_MAX,
   HEAT_GAIN_PER_SECOND,
   HEAT_COOL_RATE,
   OVERHEAT_LOCKOUT_MS,
   coresForBossTier,
   SHOP_ITEMS,
+  SHOP_ITEM_MAX_PURCHASES,
   shopItemCost,
+  rollShopOffer,
+  SHOP_REROLLS,
+  SHOP_REROLL_COST,
   MERCHANT_OFFSET_X,
   MERCHANT_SHIELD_OFFSET_X,
   MERCHANT_SHIELD_RADIUS,
+  MERCHANT_ENTER_MS,
+  MERCHANT_LEAVE_SPEED,
+  MERCHANT_CLEAR_RADIUS,
+  randomBoardPerimeterPoint,
 } from "./asteroidsEngine";
 import { useAuth } from "@/app/games/AuthContext";
 import GuestIcon from "@/app/games/GuestIcon";
@@ -147,6 +175,29 @@ function createChaseShip() {
   return { x: CHASE_SHIP_X, y: BOARD_H / 2, angle: Math.PI / 2, vx: 0, vy: 0, invulnUntil: 0 };
 }
 
+function createDeflector() {
+  return {
+    // No free charge — the deflector is fully store-gated, first purchase
+    // included (see the "deflector" shop item).
+    baseMax: 0,
+    baseCharges: 0,
+    // The shield powerup's charge only regenerates once Deflector's been
+    // bought at least once (baseMax > 0) — that's the whole point of
+    // paying for it. Before that, a pickup is a plain hold: use it within
+    // DEFLECTOR_RECHARGE_MS (8s) of picking it up or it expires unused, and
+    // if it blocks a hit it's gone for good until the next pickup — no
+    // regen at all pre-purchase.
+    bonusCharge: false,
+    bonusExpiresAt: Infinity, // pre-purchase hold timer
+    bonusNextChargeAt: Infinity, // post-purchase regen timer
+    nextChargeAt: Infinity,
+    graceUntil: 0,
+    // { slot, startedAt, kind: "spend" | "regen" } — drives the per-segment
+    // flash/fade in the shield render, nothing else.
+    flashes: [],
+  };
+}
+
 function createInitialState() {
   return {
     mode: "centered",
@@ -169,10 +220,16 @@ function createInitialState() {
     cores: 0,
     merchant: null,
     shopPurchaseCounts: {},
+    shopOffer: [],
+    shopRerollsLeft: 0,
     heatMaxBonus: 0,
     coolRateBonusPct: 0,
     dropChanceBonus: 0,
     lockoutReductionPct: 0,
+    upgrades: { bulletDamage: 1, pierce: false, dualFire: false },
+    // Chase-mode only in practice (nothing shoots back in classic), but
+    // initialized unconditionally so no code path has to null-check it.
+    deflector: createDeflector(),
     stars: createStars(),
     nextId: 1,
     wave: 0,
@@ -225,6 +282,245 @@ function spawnParticles(s, x, y, color, count = 10) {
   }
 }
 
+function deflectorTotalCharges(d) {
+  return d.baseCharges + (d.bonusCharge ? 1 : 0);
+}
+
+// Bonus charge goes first. Returns false when there was nothing left to
+// spend and the hit should land for real.
+function consumeDeflectorCharge(s, now) {
+  const d = s.deflector;
+  const slot = deflectorTotalCharges(d) - 1;
+  if (slot < 0) return false;
+  if (d.bonusCharge) {
+    d.bonusCharge = false;
+    d.bonusExpiresAt = Infinity;
+    // Regen is a Deflector-purchase perk — spent pre-purchase, it's just
+    // gone until the next pickup.
+    if (d.baseMax > 0) d.bonusNextChargeAt = now + DEFLECTOR_RECHARGE_MS;
+  } else {
+    d.baseCharges -= 1;
+    if (d.nextChargeAt === Infinity) d.nextChargeAt = now + DEFLECTOR_RECHARGE_MS;
+  }
+  d.flashes.push({ slot, startedAt: now, kind: "spend" });
+  d.graceUntil = now + DEFLECTOR_HIT_GRACE_MS;
+  return true;
+}
+
+function updateDeflector(s, now) {
+  const d = s.deflector;
+  if (d.baseCharges < d.baseMax && now >= d.nextChargeAt) {
+    d.baseCharges += 1;
+    d.flashes.push({ slot: deflectorTotalCharges(d) - 1, startedAt: now, kind: "regen" });
+    d.nextChargeAt = d.baseCharges < d.baseMax ? now + DEFLECTOR_RECHARGE_MS : Infinity;
+  }
+  // Pre-purchase hold: an unused pickup expires instead of sitting forever.
+  if (d.bonusCharge && d.baseMax === 0 && now >= d.bonusExpiresAt) {
+    d.bonusCharge = false;
+    d.bonusExpiresAt = Infinity;
+  }
+  // Post-purchase regen: only reachable once baseMax > 0 — see
+  // consumeDeflectorCharge, which only arms this timer in that case.
+  if (!d.bonusCharge && now >= d.bonusNextChargeAt) {
+    d.bonusCharge = true;
+    d.bonusNextChargeAt = Infinity;
+    d.flashes.push({ slot: deflectorTotalCharges(d) - 1, startedAt: now, kind: "regen" });
+  }
+  if (d.flashes.length > 0) {
+    d.flashes = d.flashes.filter((f) => now - f.startedAt < DEFLECTOR_FLASH_MS);
+  }
+}
+
+// Aimed shots go at wherever the ship is right now (not led or tracked
+// afterward), so standing still is a guaranteed hit and moving after it
+// fires is a guaranteed dodge. Pattern shots ignore the ship entirely and
+// fan out across the lane instead — that's what makes the invulnerability
+// phases a dodge test rather than another aim check.
+function fireBossBullet(s, boss, ship, now, shotIndex) {
+  const muzzleX = boss.x - BOSS_RADIUS;
+  let vx;
+  let vy;
+  if (boss.burstAimed) {
+    const dx = ship.x - muzzleX;
+    const dy = ship.y - boss.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    vx = (dx / dist) * boss.bulletSpeed;
+    vy = (dy / dist) * boss.bulletSpeed;
+  } else {
+    const spread = 0.5;
+    const angle = Math.PI + (shotIndex - (boss.burstSizeThisVolley - 1) / 2) * spread;
+    vx = Math.cos(angle) * boss.bulletSpeed;
+    vy = Math.sin(angle) * boss.bulletSpeed;
+  }
+  s.bossBullets.push({ x: muzzleX, y: boss.y, vx, vy, bornAt: now });
+}
+
+function startBossBurst(boss, now, aimed) {
+  boss.burstState = "windup";
+  boss.burstPhaseAt = now;
+  boss.burstShotsFired = 0;
+  boss.burstAimed = aimed;
+  boss.burstSizeThisVolley = bossBurstSizeForTier(boss.tier);
+}
+
+// Returns true on the frame the volley's last shot leaves the barrel — the
+// caller decides what comes next (a pause, or the next scripted pattern).
+function stepBossBurst(s, boss, ship, now) {
+  if (boss.burstState === "windup") {
+    if (now - boss.burstPhaseAt < BOSS_BURST_WINDUP_MS) return false;
+    boss.burstState = "firing";
+    boss.burstPhaseAt = now;
+    boss.burstShotsFired = 0;
+  }
+  if (boss.burstShotsFired > 0 && now - boss.burstPhaseAt < BOSS_BURST_SHOT_INTERVAL_MS) {
+    return false;
+  }
+  boss.burstPhaseAt = now;
+  fireBossBullet(s, boss, ship, now, boss.burstShotsFired);
+  boss.burstShotsFired += 1;
+  return boss.burstShotsFired >= boss.burstSizeThisVolley;
+}
+
+function startBossSpiral(boss, now) {
+  boss.spiralState = "windup";
+  boss.spiralPhaseAt = now;
+  boss.spiralAngle = Math.random() * Math.PI * 2;
+  boss.spiralShotAccum = 0;
+}
+
+function stepBossSpiral(s, boss, now, dt) {
+  if (boss.spiralState === "windup") {
+    if (now - boss.spiralPhaseAt < BOSS_SPIRAL_WINDUP_MS) return false;
+    boss.spiralState = "firing";
+    boss.spiralPhaseAt = now;
+  }
+  boss.spiralAngle += BOSS_SPIRAL_ROTATION_SPEED * dt;
+  boss.spiralShotAccum += dt * 1000;
+  while (boss.spiralShotAccum >= BOSS_SPIRAL_SHOT_INTERVAL_MS) {
+    boss.spiralShotAccum -= BOSS_SPIRAL_SHOT_INTERVAL_MS;
+    for (let i = 0; i < BOSS_SPIRAL_ARM_COUNT; i++) {
+      const angle = boss.spiralAngle + (i * Math.PI * 2) / BOSS_SPIRAL_ARM_COUNT;
+      s.bossBullets.push({
+        x: boss.x,
+        y: boss.y,
+        vx: Math.cos(angle) * BOSS_SPIRAL_BULLET_SPEED,
+        vy: Math.sin(angle) * BOSS_SPIRAL_BULLET_SPEED,
+        bornAt: now,
+      });
+    }
+  }
+  if (now - boss.spiralPhaseAt < BOSS_SPIRAL_DURATION_MS) return false;
+  boss.spiralState = "idle";
+  return true;
+}
+
+function startBossLaser(boss, ship, now, mode) {
+  boss.laserPatternMode = mode;
+  boss.laserState = "charging";
+  boss.laserPhaseAt = now;
+  if (mode === "simultaneous") {
+    boss.laserYs = bossLaserPatternYs();
+    boss.laserVolleyBeams = 1; // every beam is on screen at once, so one "beam" of work
+  } else {
+    boss.laserY = ship.y;
+    boss.laserVolleyBeams = boss.laserBeamsTotal;
+  }
+  boss.laserBeamsRemaining = boss.laserVolleyBeams;
+}
+
+// Beams per volley: the first charges slow (a fair warning), any beam after
+// it in the same volley re-locks onto the ship's current spot and charges
+// much faster. Returns true when the whole volley is spent.
+function stepBossLaser(boss, ship, now) {
+  if (boss.laserState === "charging") {
+    const chargeMs =
+      boss.laserBeamsRemaining === boss.laserVolleyBeams
+        ? BOSS_LASER_CHARGE_MS
+        : BOSS_LASER_RECHARGE_MS;
+    if (now - boss.laserPhaseAt >= chargeMs) {
+      boss.laserState = "firing";
+      boss.laserPhaseAt = now;
+    }
+    return false;
+  }
+  if (now - boss.laserPhaseAt < BOSS_LASER_ACTIVE_MS) return false;
+  boss.laserBeamsRemaining -= 1;
+  if (boss.laserBeamsRemaining > 0) {
+    boss.laserState = "charging";
+    boss.laserY = ship.y;
+    boss.laserPhaseAt = now;
+    return false;
+  }
+  boss.laserState = "idle";
+  return true;
+}
+
+// Phase attacks always use the non-lock-on variants — during a phase the
+// boss can't be shot, so the only thing left to do is read the pattern.
+function startBossPhaseAttack(boss, ship, now) {
+  const attack = boss.phaseQueue[0];
+  if (attack === "burst") startBossBurst(boss, now, false);
+  else if (attack === "spiral") startBossSpiral(boss, now);
+  else startBossLaser(boss, ship, now, "simultaneous");
+}
+
+// The y positions a firing beam actually occupies — one entry in lock-on
+// mode, several in simultaneous mode. Used by both the hit check and the
+// render so the two can't disagree.
+function bossLaserBeamYs(boss) {
+  return boss.laserPatternMode === "simultaneous" ? boss.laserYs : [boss.laserY];
+}
+
+// Enters from a true random point on the board's border each time (see
+// randomBoardPerimeterPoint), so it's never the same beat twice, and drifts
+// in from there to the rest spot beside the ship — facing stays fixed on
+// its eventual exit heading throughout (see the render code), so it reads
+// as sliding in sideways rather than turning to face its approach.
+function createMerchant(shipX, shipY, now) {
+  const restX = shipX + MERCHANT_OFFSET_X;
+  const restY = shipY;
+  const from = randomBoardPerimeterPoint();
+  return {
+    x: from.x,
+    y: from.y,
+    fromX: from.x,
+    fromY: from.y,
+    restX,
+    restY,
+    dirX: 1, // exit heading — set for real by closeShop, this is just a default
+    dirY: 0,
+    state: "entering", // entering | idle | leaving
+    phaseAt: now,
+  };
+}
+
+// Entering eases into place; leaving just keeps going in the same straight
+// line past the rest point and off the far side of the screen, sweeping
+// any asteroid it passes near — a flythrough, not a retreat. Returns true
+// once the merchant should be dropped from state entirely.
+function updateMerchant(s, m, now, dt) {
+  if (m.state === "entering") {
+    const t = Math.min(1, (now - m.phaseAt) / MERCHANT_ENTER_MS);
+    const eased = 1 - (1 - t) * (1 - t);
+    m.x = m.fromX + (m.restX - m.fromX) * eased;
+    m.y = m.fromY + (m.restY - m.fromY) * eased;
+    if (t >= 1) m.state = "idle";
+    return false;
+  }
+  if (m.state !== "leaving") return false;
+  m.x += m.dirX * MERCHANT_LEAVE_SPEED * dt;
+  m.y += m.dirY * MERCHANT_LEAVE_SPEED * dt;
+  const cleared = new Set();
+  for (const a of s.asteroids) {
+    if (circlesCollide(a.x, a.y, ASTEROID_SIZES[a.size].radius, m.x, m.y, MERCHANT_CLEAR_RADIUS)) {
+      cleared.add(a.id);
+      spawnParticles(s, a.x, a.y, "#ffd15e", 8);
+    }
+  }
+  if (cleared.size > 0) s.asteroids = s.asteroids.filter((a) => !cleared.has(a.id));
+  return m.x < -120 || m.x > BOARD_W + 120 || m.y < -120 || m.y > BOARD_H + 120;
+}
+
 function updateCenteredShip(s, dt, keys, speedBoosted) {
   const ship = s.ship;
   const accel = speedBoosted ? THRUST_ACCEL * SPEED_BOOST_MULTIPLIER : THRUST_ACCEL;
@@ -270,6 +566,14 @@ function applyPowerupPickup(s, type, now, scoreMult) {
   s.powerupDropSuppressUntil = now + POWERUP_SUPPRESS_MS;
   if (type === "extra_life") {
     s.lives = Math.min(MAX_LIVES, s.lives + 1);
+  } else if (type === "shield") {
+    // Before Deflector's bought (baseMax 0), a pickup is a plain hold: use
+    // it within DEFLECTOR_RECHARGE_MS or it expires, and it doesn't come
+    // back on its own if spent — see updateDeflector/consumeDeflectorCharge.
+    // Once bought, it behaves like a bought charge instead (regenerates).
+    const d = s.deflector;
+    d.bonusCharge = true;
+    if (d.baseMax === 0) d.bonusExpiresAt = now + DEFLECTOR_RECHARGE_MS;
   } else if (type === "bomb") {
     const chase = s.mode === "chase";
     for (const a of s.asteroids) {
@@ -340,6 +644,8 @@ export default function AsteroidsGame() {
   const [shopOpen, setShopOpen] = useState(false);
   const [cores, setCores] = useState(0);
   const [shopPurchaseCounts, setShopPurchaseCounts] = useState({});
+  const [shopOffer, setShopOffer] = useState([]);
+  const [shopRerollsLeft, setShopRerollsLeft] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [started, setStarted] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -530,12 +836,27 @@ export default function AsteroidsGame() {
     }
     ctx.globalAlpha = 1;
 
-    ctx.fillStyle = "#ff5e9c";
+    // Bullets currently overlapping the boss draw here, under the boss
+    // sprite, so a piercing round visibly passes *through* it; everything
+    // else draws on top after the boss (see below).
+    const bulletsOverBoss = [];
+    const bulletsInFront = [];
     for (const b of s.bullets) {
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, 2.2, 0, Math.PI * 2);
-      ctx.fill();
+      if (s.boss && circlesCollide(b.x, b.y, 2, s.boss.x, s.boss.y, BOSS_RADIUS)) {
+        bulletsOverBoss.push(b);
+      } else {
+        bulletsInFront.push(b);
+      }
     }
+    const drawBullets = (list) => {
+      ctx.fillStyle = "#ff5e9c";
+      for (const b of list) {
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+    drawBullets(bulletsOverBoss);
 
     for (const a of s.asteroids) {
       const { radius } = ASTEROID_SIZES[a.size];
@@ -562,7 +883,7 @@ export default function AsteroidsGame() {
 
     if (s.boss) {
       const boss = s.boss;
-      const invulnerable = nowMs < boss.vulnerableAt;
+      const invulnerable = nowMs < boss.vulnerableAt || boss.phaseActive;
       // Glow ring behind the sprite, and a health bar above it — both just
       // plain canvas shapes, same treatment as the powerup badges. Blue
       // while it can't be hurt yet, red once it's a fair target.
@@ -573,29 +894,68 @@ export default function AsteroidsGame() {
         ctx.arc(boss.x, boss.y, BOSS_RADIUS + i * 4, 0, Math.PI * 2);
         ctx.fill();
       }
-      if (boss.laserState === "charging") {
-        const progress = Math.min(1, (nowMs - boss.laserPhaseAt) / BOSS_LASER_CHARGE_MS);
-        // Grows from a thin flicker to a solid line as the charge fills, so
-        // the last moment before firing reads as "about to go off."
-        ctx.strokeStyle = `rgba(255,94,94,${0.25 + progress * 0.5})`;
-        ctx.lineWidth = 1 + progress * 3;
-        ctx.setLineDash([10, 8]);
-        ctx.lineDashOffset = -nowMs / 20;
+      // Phases look nothing like the brief intro grace: a hard, pulsing ring
+      // that says "shooting me is pointless right now, dodge instead."
+      if (boss.phaseActive) {
+        const pulse = 0.5 + Math.sin(nowMs / 120) * 0.25;
+        ctx.strokeStyle = `rgba(94,200,255,${pulse})`;
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(0, boss.laserY);
-        ctx.lineTo(boss.x - BOSS_RADIUS, boss.laserY);
+        ctx.arc(boss.x, boss.y, BOSS_RADIUS + 10, 0, Math.PI * 2);
         ctx.stroke();
-        ctx.setLineDash([]);
-      } else if (boss.laserState === "firing") {
-        ctx.fillStyle = "rgba(255,94,94,0.35)";
-        ctx.fillRect(0, boss.laserY - BOSS_LASER_HALF_WIDTH - 4, boss.x - BOSS_RADIUS, BOSS_LASER_HALF_WIDTH * 2 + 8);
-        ctx.fillStyle = "#ff5e5e";
-        ctx.fillRect(0, boss.laserY - BOSS_LASER_HALF_WIDTH, boss.x - BOSS_RADIUS, BOSS_LASER_HALF_WIDTH * 2);
-        ctx.fillStyle = "rgba(255,255,255,0.85)";
-        ctx.fillRect(0, boss.laserY - 2, boss.x - BOSS_RADIUS, 4);
+      }
+      if (boss.laserState !== "idle") {
+        const beamYs = bossLaserBeamYs(boss);
+        if (boss.laserState === "charging") {
+          const progress = Math.min(1, (nowMs - boss.laserPhaseAt) / BOSS_LASER_CHARGE_MS);
+          // Grows from a thin flicker to a solid line as the charge fills, so
+          // the last moment before firing reads as "about to go off."
+          ctx.strokeStyle = `rgba(255,94,94,${0.25 + progress * 0.5})`;
+          ctx.lineWidth = 1 + progress * 3;
+          ctx.setLineDash([10, 8]);
+          ctx.lineDashOffset = -nowMs / 20;
+          for (const beamY of beamYs) {
+            ctx.beginPath();
+            ctx.moveTo(0, beamY);
+            ctx.lineTo(boss.x - BOSS_RADIUS, beamY);
+            ctx.stroke();
+          }
+          ctx.setLineDash([]);
+        } else {
+          for (const beamY of beamYs) {
+            ctx.fillStyle = "rgba(255,94,94,0.35)";
+            ctx.fillRect(0, beamY - BOSS_LASER_HALF_WIDTH - 4, boss.x - BOSS_RADIUS, BOSS_LASER_HALF_WIDTH * 2 + 8);
+            ctx.fillStyle = "#ff5e5e";
+            ctx.fillRect(0, beamY - BOSS_LASER_HALF_WIDTH, boss.x - BOSS_RADIUS, BOSS_LASER_HALF_WIDTH * 2);
+            ctx.fillStyle = "rgba(255,255,255,0.85)";
+            ctx.fillRect(0, beamY - 2, boss.x - BOSS_RADIUS, 4);
+          }
+        }
       }
 
       drawSprite(ctx, "boss", boss.x, boss.y, BOSS_RADIUS * 2.3, boss.rotation);
+
+      // Windup telegraph for the gun attacks — same "it's coming" language
+      // as the laser charge, but on the boss itself since a burst/spiral
+      // has no beam line to draw ahead of time.
+      const windup =
+        boss.burstState === "windup"
+          ? (nowMs - boss.burstPhaseAt) / BOSS_BURST_WINDUP_MS
+          : boss.spiralState === "windup"
+            ? (nowMs - boss.spiralPhaseAt) / BOSS_SPIRAL_WINDUP_MS
+            : -1;
+      if (windup >= 0) {
+        const flash = Math.min(1, windup) * (0.55 + Math.sin(nowMs / 60) * 0.25);
+        ctx.fillStyle = `rgba(255,220,120,${flash * 0.45})`;
+        ctx.beginPath();
+        ctx.arc(boss.x, boss.y, BOSS_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(255,220,120,${flash})`;
+        ctx.lineWidth = 2 + Math.min(1, windup) * 3;
+        ctx.beginPath();
+        ctx.arc(boss.x, boss.y, BOSS_RADIUS + 6 - Math.min(1, windup) * 6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
       const barW = BOSS_RADIUS * 2;
       const barX = boss.x - BOSS_RADIUS;
@@ -607,10 +967,17 @@ export default function AsteroidsGame() {
       ctx.fillRect(barX, barY, barW * pct, 6);
     }
 
-    // Merchant + shield during the shop interlude — gold glow (distinct
-    // from the boss's blue/red) so it doesn't read as another hazard, and
-    // a shield dome facing the oncoming rocks it's blocking.
-    if (s.shopOpen && s.merchant) {
+    drawBullets(bulletsInFront);
+
+    // Merchant + shield — gold glow (distinct from the boss's blue/red) so
+    // it doesn't read as another hazard. Drawn through all three states
+    // (entering/idle/leaving), not just while the shop UI is up, so the
+    // flythrough is visible after the shop's already closed. Facing is
+    // fixed on its exit heading (straight ahead of the ship) the entire
+    // time, entrance included, so drifting in from any border point reads
+    // as a sideways slide rather than a turn. Shield never drops, same
+    // reason — it's up for as long as the merchant is on screen at all.
+    if (s.merchant) {
       const m = s.merchant;
       for (let i = 6; i > 0; i--) {
         ctx.fillStyle = `rgba(255,209,94,${0.03 * (7 - i)})`;
@@ -684,6 +1051,42 @@ export default function AsteroidsGame() {
       }
     }
 
+    // Deflector: one full semicircle per available charge, wrapping the
+    // front and sides of the ship and open at the back, stacked outward as
+    // concentric rings — so 3 charges reads as 3 nested semicircles rather
+    // than one arc carved into wedges. Rings flash bright as they're spent
+    // and fade back in as they recharge.
+    if (s.started && !(s.gameOver && s.lives <= 0)) {
+      const d = s.deflector;
+      const maxSlots = d.baseMax + 1; // +1 for the powerup's bonus charge
+      const total = d.baseCharges + (d.bonusCharge ? 1 : 0);
+      const arcHalf = Math.PI / 2; // 90 deg each way — a full semicircle, open at the back
+      const facing = s.ship.angle - Math.PI / 2; // ship.angle is clockwise-from-up
+      const ringGap = 5;
+      for (let slot = 0; slot < maxSlots; slot++) {
+        const spend = d.flashes.find((x) => x.slot === slot && x.kind === "spend");
+        const regen = d.flashes.find((x) => x.slot === slot && x.kind === "regen");
+        if (slot >= total && !spend) continue;
+        let color;
+        let width;
+        if (spend) {
+          const t = Math.max(0, 1 - (nowMs - spend.startedAt) / DEFLECTOR_FLASH_MS);
+          color = `rgba(200,240,255,${t})`;
+          width = 3 + t * 3;
+        } else {
+          const t = regen ? Math.min(1, (nowMs - regen.startedAt) / DEFLECTOR_FLASH_MS) : 1;
+          color = `rgba(94,200,255,${0.55 * t})`;
+          width = 3;
+        }
+        const radius = SHIP_RADIUS * 1.7 + slot * ringGap;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        ctx.arc(s.ship.x, s.ship.y, radius, facing - arcHalf, facing + arcHalf);
+        ctx.stroke();
+      }
+    }
+
     // Weapon heat gauge — floats just off the ship's upper-right so it
     // stays in view no matter where the ship wanders, rather than sitting
     // in a fixed HUD spot far from what you're actually looking at. Fills
@@ -749,7 +1152,10 @@ export default function AsteroidsGame() {
     s.lives -= 1;
     setLives(s.lives);
     // A hit wipes every active buff, not just whichever one would've
-    // saved you — losing a life resets the slate.
+    // saved you — losing a life resets the slate. Deflector is left alone:
+    // a hit only reaches the ship at all once every charge is already
+    // spent (see consumeDeflectorCharge), so there's nothing to reset —
+    // refilling here would make losing a life a free shield recharge.
     s.activePowerups = {};
     if (s.lives <= 0) {
       endGame();
@@ -772,6 +1178,8 @@ export default function AsteroidsGame() {
   const buyItem = useCallback((key) => {
     const s = stateRef.current;
     const bought = s.shopPurchaseCounts[key] || 0;
+    const max = SHOP_ITEM_MAX_PURCHASES[key];
+    if (max !== undefined && bought >= max) return;
     const cost = shopItemCost(key, bought);
     if (s.cores < cost) return;
     s.cores -= cost;
@@ -779,17 +1187,48 @@ export default function AsteroidsGame() {
     if (key === "heat_capacity") s.heatMaxBonus += 15;
     else if (key === "coolant_boost") s.coolRateBonusPct += 0.25;
     else if (key === "extra_life") s.lives += 1;
-    else if (key === "lucky_scavenger") s.dropChanceBonus += 0.03;
+    else if (key === "lucky_scavenger") s.dropChanceBonus += 0.02;
     else if (key === "shorter_overheat") s.lockoutReductionPct += 0.15;
+    else if (key === "damage") s.upgrades.bulletDamage += 0.25;
+    else if (key === "pierce") s.upgrades.pierce = true;
+    else if (key === "dual_fire") s.upgrades.dualFire = true;
+    else if (key === "deflector") {
+      // Bought charges regenerate like the free one, so the max goes up and
+      // the new charge is handed over already full.
+      s.deflector.baseMax += 1;
+      s.deflector.baseCharges += 1;
+    }
     setCores(s.cores);
     setShopPurchaseCounts({ ...s.shopPurchaseCounts });
     if (key === "extra_life") setLives(s.lives);
   }, []);
 
+  const rerollShop = useCallback(() => {
+    const s = stateRef.current;
+    if (s.shopRerollsLeft <= 0 || s.cores < SHOP_REROLL_COST) return;
+    s.cores -= SHOP_REROLL_COST;
+    s.shopRerollsLeft -= 1;
+    s.shopOffer = rollShopOffer(s.shopPurchaseCounts, s.bossesDefeated);
+    setCores(s.cores);
+    setShopRerollsLeft(s.shopRerollsLeft);
+    setShopOffer(s.shopOffer);
+  }, []);
+
   const closeShop = useCallback(() => {
     const s = stateRef.current;
     s.shopOpen = false;
-    s.merchant = null;
+    // Merchant doesn't just vanish — regardless of which edge it came in
+    // from, it always exits straight ahead of the ship (matching the
+    // ship's current lane), sweeping any debris directly in that line as
+    // it flies off (see updateMerchant). Gameplay resumes immediately; the
+    // flythrough plays out in the background.
+    if (s.merchant) {
+      const m = s.merchant;
+      m.state = "leaving";
+      m.y = s.ship.y;
+      m.dirX = 1;
+      m.dirY = 0;
+    }
     setShopOpen(false);
   }, []);
 
@@ -874,7 +1313,6 @@ export default function AsteroidsGame() {
         for (const type of Object.keys(s.activePowerups)) {
           if (now >= s.activePowerups[type]) delete s.activePowerups[type];
         }
-        const shielded = "shield" in s.activePowerups;
         const rapidFire = "rapid_fire" in s.activePowerups;
         const spreadShot = "spread_shot" in s.activePowerups;
         const speedBoost = "speed_boost" in s.activePowerups;
@@ -896,7 +1334,9 @@ export default function AsteroidsGame() {
         } else if (now < s.heatLockedUntil) {
           s.heat = Math.max(0, s.heat - (effectiveHeatMax / (effectiveLockoutMs / 1000)) * dt);
         } else if (keys.fire && !unlimitedFire && !s.shopOpen) {
-          s.heat = Math.min(effectiveHeatMax, s.heat + HEAT_GAIN_PER_SECOND * dt);
+          const heatRate =
+            HEAT_GAIN_PER_SECOND * (s.upgrades.dualFire ? DUAL_FIRE_HEAT_MULTIPLIER : 1);
+          s.heat = Math.min(effectiveHeatMax, s.heat + heatRate * dt);
           if (s.heat >= effectiveHeatMax) s.heatLockedUntil = now + effectiveLockoutMs;
         } else {
           s.heat = Math.max(0, s.heat - effectiveCoolRate * dt);
@@ -921,15 +1361,24 @@ export default function AsteroidsGame() {
             y: ship.y - Math.cos(ship.angle) * SHIP_RADIUS,
           };
           const spreadOffsets = spreadShot ? [-SPREAD_SHOT_ANGLE, 0, SPREAD_SHOT_ANGLE] : [0];
+          // Twin cannons multiply the spread rather than replacing it — the
+          // two upgrades are bought separately, so neither should quietly
+          // cancel the other out.
+          const barrels = s.upgrades.dualFire ? [-1, 1] : [0];
+          // Wing-mounted, not converged at the nose tip — fired from the
+          // ship's center-body sides so two shots visibly read as two guns.
+          const origin = s.upgrades.dualFire ? ship : nose;
           for (const offset of spreadOffsets) {
             const angle = ship.angle + offset;
-            s.bullets.push({
-              x: nose.x,
-              y: nose.y,
-              vx: Math.sin(angle) * bulletSpeed,
-              vy: -Math.cos(angle) * bulletSpeed,
-              bornAt: now,
-            });
+            for (const side of barrels) {
+              s.bullets.push({
+                x: origin.x + Math.cos(ship.angle) * side * DUAL_FIRE_OFFSET,
+                y: origin.y + Math.sin(ship.angle) * side * DUAL_FIRE_OFFSET,
+                vx: Math.sin(angle) * bulletSpeed,
+                vy: -Math.cos(angle) * bulletSpeed,
+                bornAt: now,
+              });
+            }
           }
         }
 
@@ -1008,60 +1457,81 @@ export default function AsteroidsGame() {
                 boss.entered = true;
                 boss.vulnerableAt = now + BOSS_INTRO_GRACE_MS;
                 boss.nextLaserAt = now + boss.laserInterval;
+                boss.burstPhaseAt = now;
+                if (boss.tier >= BOSS_PHASE_MIN_TIER) {
+                  boss.nextPhaseAt = now + BOSS_PHASE_INTERVAL_MS;
+                }
               }
             } else {
               boss.y =
                 boss.baseY +
                 Math.sin(((now - boss.spawnedAt) / 1000) * BOSS_BOB_SPEED) * BOSS_BOB_AMPLITUDE;
-              if (now - boss.lastFireTime > boss.fireInterval && now >= boss.vulnerableAt) {
-                boss.lastFireTime = now;
-                // Aimed at wherever the ship is right now (not tracked or
-                // led afterward), so standing still is a guaranteed hit and
-                // moving after it fires is a guaranteed dodge.
-                const muzzleX = boss.x - BOSS_RADIUS;
-                const dx = ship.x - muzzleX;
-                const dy = ship.y - boss.y;
-                const dist = Math.hypot(dx, dy) || 1;
-                s.bossBullets.push({
-                  x: muzzleX,
-                  y: boss.y,
-                  vx: (dx / dist) * boss.bulletSpeed,
-                  vy: (dy / dist) * boss.bulletSpeed,
-                  bornAt: now,
-                });
+            }
+            // Attacks stay gated on the intro grace deadline that also gates
+            // damage, so immunity ending and it opening fire land on the
+            // same frame.
+            if (boss.entered && now >= boss.vulnerableAt) {
+              // Invulnerability phase (tier 6+): everything else is on hold
+              // while a rolled sequence of pattern attacks plays out. Only
+              // started from a clean slate so a phase never cuts a volley
+              // that's already mid-flight in half.
+              if (
+                !boss.phaseActive &&
+                now >= boss.nextPhaseAt &&
+                boss.laserState === "idle" &&
+                boss.spiralState === "idle" &&
+                boss.burstState === "pause"
+              ) {
+                boss.phaseActive = true;
+                boss.phaseQueue = rollBossPhaseAttacks();
+                startBossPhaseAttack(boss, ship, now);
               }
 
-              // Laser volleys: the first beam charges slow (a fair warning),
-              // but a beam beyond the first in the same volley re-locks
-              // onto the ship's current spot and charges much faster — see
-              // bossLaserBeamsForTier for how many beams a volley has.
-              if (boss.laserState === "idle") {
-                if (now >= boss.nextLaserAt && now >= boss.vulnerableAt) {
-                  boss.laserState = "charging";
-                  boss.laserY = ship.y;
-                  boss.laserPhaseAt = now;
-                  boss.laserBeamsRemaining = boss.laserBeamsTotal;
-                }
-              } else if (boss.laserState === "charging") {
-                const chargeMs =
-                  boss.laserBeamsRemaining === boss.laserBeamsTotal
-                    ? BOSS_LASER_CHARGE_MS
-                    : BOSS_LASER_RECHARGE_MS;
-                if (now - boss.laserPhaseAt >= chargeMs) {
-                  boss.laserState = "firing";
-                  boss.laserPhaseAt = now;
-                }
-              } else if (boss.laserState === "firing") {
-                if (now - boss.laserPhaseAt >= BOSS_LASER_ACTIVE_MS) {
-                  boss.laserBeamsRemaining -= 1;
-                  if (boss.laserBeamsRemaining > 0) {
-                    boss.laserState = "charging";
-                    boss.laserY = ship.y;
-                    boss.laserPhaseAt = now;
+              if (boss.phaseActive) {
+                const attack = boss.phaseQueue[0];
+                let done = false;
+                if (attack === "burst") done = stepBossBurst(s, boss, ship, now);
+                else if (attack === "spiral") done = stepBossSpiral(s, boss, now, dt);
+                else done = stepBossLaser(boss, ship, now);
+                if (done) {
+                  boss.phaseQueue.shift();
+                  if (boss.phaseQueue.length > 0) {
+                    startBossPhaseAttack(boss, ship, now);
                   } else {
-                    boss.laserState = "idle";
+                    boss.phaseActive = false;
+                    boss.nextPhaseAt = now + BOSS_PHASE_INTERVAL_MS;
+                    boss.burstState = "pause";
+                    boss.burstPhaseAt = now;
                     boss.nextLaserAt = now + boss.laserInterval;
                   }
+                }
+              } else {
+                // Gun slot: bursts by default, with the spiral rolled in as
+                // an alternative from tier 2 on — see
+                // bossSpiralChanceForTier. Only one of the two runs at a
+                // time; the laser below is on its own parallel timer.
+                if (boss.spiralState !== "idle") {
+                  if (stepBossSpiral(s, boss, now, dt)) {
+                    boss.burstState = "pause";
+                    boss.burstPhaseAt = now;
+                  }
+                } else if (boss.burstState === "pause") {
+                  if (now - boss.burstPhaseAt >= bossBurstPauseForTier(boss.tier)) {
+                    if (Math.random() < bossSpiralChanceForTier(boss.tier)) {
+                      startBossSpiral(boss, now);
+                    } else {
+                      startBossBurst(boss, now, true);
+                    }
+                  }
+                } else if (stepBossBurst(s, boss, ship, now)) {
+                  boss.burstState = "pause";
+                  boss.burstPhaseAt = now;
+                }
+
+                if (boss.laserState === "idle") {
+                  if (now >= boss.nextLaserAt) startBossLaser(boss, ship, now, "lockon");
+                } else if (stepBossLaser(boss, ship, now)) {
+                  boss.nextLaserAt = now + boss.laserInterval;
                 }
               }
             }
@@ -1070,7 +1540,18 @@ export default function AsteroidsGame() {
             b.x += b.vx * dt;
             b.y += b.vy * dt;
           }
-          s.bossBullets = s.bossBullets.filter((b) => b.x > -20);
+          // Spiral bullets radiate in every direction, so culling only off
+          // the left edge would leak them off the other three.
+          s.bossBullets = s.bossBullets.filter(
+            (b) => b.x > -20 && b.x < BOARD_W + 60 && b.y > -60 && b.y < BOARD_H + 60
+          );
+        }
+
+        // Merchant: entering/idle/leaving runs independent of s.shopOpen so
+        // the exit flythrough keeps playing after the shop UI is gone and
+        // gameplay has already resumed.
+        if (s.merchant && updateMerchant(s, s.merchant, now, dt)) {
+          s.merchant = null;
         }
 
         // Powerups: move/expire first so bullet and ship collision checks
@@ -1094,8 +1575,34 @@ export default function AsteroidsGame() {
           s.powerups = s.powerups.filter((p) => now - p.bornAt < POWERUP_LIFETIME_MS);
         }
 
+        // Bullet vs boss bullet: they trade off, one for one. Resolved
+        // before anything else so a shot that got cancelled can't also
+        // register a hit on the same frame.
+        // Disabled for now — playtest found it trivializes boss fights.
+        // Flip this back on once the boss side is tuned to expect it.
+        if (false && s.bullets.length > 0 && s.bossBullets.length > 0) {
+          const cancelledPlayer = new Set();
+          const cancelledBoss = new Set();
+          for (const b of s.bullets) {
+            for (const bb of s.bossBullets) {
+              if (cancelledBoss.has(bb)) continue;
+              if (circlesCollide(b.x, b.y, 2, bb.x, bb.y, BOSS_BULLET_RADIUS)) {
+                cancelledPlayer.add(b);
+                cancelledBoss.add(bb);
+                spawnParticles(s, (b.x + bb.x) / 2, (b.y + bb.y) / 2, "#ffd15e", 5);
+                break;
+              }
+            }
+          }
+          if (cancelledPlayer.size > 0) {
+            s.bullets = s.bullets.filter((b) => !cancelledPlayer.has(b));
+            s.bossBullets = s.bossBullets.filter((b) => !cancelledBoss.has(b));
+          }
+        }
+
         // Bullet vs asteroid, and — since flying into a drifting pickup
         // proved fiddly — bullet vs powerup too, so shooting one collects it.
+        const pierce = s.upgrades.pierce;
         const deadBullets = new Set();
         const deadAsteroids = new Set();
         const collectedPowerups = new Set();
@@ -1115,11 +1622,17 @@ export default function AsteroidsGame() {
           if (deadBullets.has(b)) continue;
           if (
             s.boss &&
+            !s.boss.phaseActive &&
             now >= s.boss.vulnerableAt &&
+            !(b.hitIds && b.hitIds.has("boss")) &&
             circlesCollide(b.x, b.y, 2, s.boss.x, s.boss.y, BOSS_RADIUS)
           ) {
-            deadBullets.add(b);
-            s.boss.health -= 1;
+            // A piercing bullet overlaps the boss for many frames, so it has
+            // to remember it already scored — asteroids need no such
+            // bookkeeping since a hit destroys them outright.
+            if (pierce) (b.hitIds ??= new Set()).add("boss");
+            else deadBullets.add(b);
+            s.boss.health -= s.upgrades.bulletDamage;
             spawnParticles(s, b.x, b.y, "#ff5e5e", 6);
           }
           if (deadBullets.has(b)) continue;
@@ -1127,7 +1640,7 @@ export default function AsteroidsGame() {
             if (deadAsteroids.has(a.id)) continue;
             const { radius, score: pts } = ASTEROID_SIZES[a.size];
             if (circlesCollide(b.x, b.y, 2, a.x, a.y, radius)) {
-              deadBullets.add(b);
+              if (!pierce) deadBullets.add(b);
               deadAsteroids.add(a.id);
               // Chase mode's score is distance + boss bonuses only —
               // asteroids there are obstacles to clear, not points.
@@ -1146,7 +1659,7 @@ export default function AsteroidsGame() {
               const children = splitAsteroid(a, s.nextId);
               s.nextId += children.length;
               spawned.push(...children);
-              break;
+              if (!pierce) break;
             }
           }
         }
@@ -1172,17 +1685,22 @@ export default function AsteroidsGame() {
           s.bossesDefeated += 1;
           s.nextBossAt = s.chaseElapsed + BOSS_INTERVAL_SECONDS;
           s.shopOpen = true;
-          s.merchant = { x: ship.x + MERCHANT_OFFSET_X, y: ship.y };
+          s.merchant = createMerchant(ship.x, ship.y, now);
+          s.shopOffer = rollShopOffer(s.shopPurchaseCounts, s.bossesDefeated);
+          s.shopRerollsLeft = SHOP_REROLLS;
           setLives(s.lives);
           setCores(s.cores);
           setShopOpen(true);
+          setShopOffer(s.shopOffer);
+          setShopRerollsLeft(s.shopRerollsLeft);
         }
         if (deadAsteroids.size > 0 || collectedPowerups.size > 0 || bossDefeated) setScore(s.score);
 
         // Ship vs asteroid, boss, and boss bullets. Untouchable while the
         // shop is open — the merchant's shield is the in-world reason, this
         // is the actual guarantee.
-        if (now >= ship.invulnUntil && !shielded && !s.shopOpen) {
+        updateDeflector(s, now);
+        if (now >= ship.invulnUntil && now >= s.deflector.graceUntil && !s.shopOpen) {
           let hit = false;
           for (const a of s.asteroids) {
             const { radius } = ASTEROID_SIZES[a.size];
@@ -1202,24 +1720,26 @@ export default function AsteroidsGame() {
               }
             }
           }
-          if (
-            !hit &&
-            s.boss &&
-            s.boss.laserState === "firing" &&
-            ship.x < s.boss.x &&
-            Math.abs(ship.y - s.boss.laserY) < BOSS_LASER_HALF_WIDTH + SHIP_RADIUS * 0.8
-          ) {
-            hit = true;
+          if (!hit && s.boss && s.boss.laserState === "firing" && ship.x < s.boss.x) {
+            hit = bossLaserBeamYs(s.boss).some(
+              (beamY) => Math.abs(ship.y - beamY) < BOSS_LASER_HALF_WIDTH + SHIP_RADIUS * 0.8
+            );
           }
           if (hit) {
-            spawnParticles(s, ship.x, ship.y, "#ff5e9c", 16);
-            respawnShip();
+            if (consumeDeflectorCharge(s, now)) {
+              spawnParticles(s, ship.x, ship.y, POWERUP_COLORS.shield, 12);
+            } else {
+              spawnParticles(s, ship.x, ship.y, "#ff5e9c", 16);
+              respawnShip();
+            }
           }
         }
 
         // Merchant's shield vs asteroids — the "rocks bouncing off the
         // shield" part of the shop animation. No score/drops from these;
-        // it's a scripted interlude, not real combat.
+        // it's a scripted interlude, not real combat. Never drops for as
+        // long as the shop is open (entering included); once it closes the
+        // exit flythrough's own sweep takes over debris-clearing duty.
         if (s.shopOpen && s.merchant) {
           const shieldX = s.merchant.x + MERCHANT_SHIELD_OFFSET_X;
           const shieldY = s.merchant.y;
@@ -1526,23 +2046,35 @@ export default function AsteroidsGame() {
                   Trader — <span className="text-[#ffd15e]">{cores}</span> cores
                 </p>
                 <div className="pointer-events-auto flex flex-wrap justify-center gap-2">
-                  {Object.entries(SHOP_ITEMS).map(([key, item]) => {
+                  {shopOffer.map((key) => {
+                    const item = SHOP_ITEMS[key];
                     const bought = shopPurchaseCounts[key] || 0;
+                    const max = SHOP_ITEM_MAX_PURCHASES[key];
+                    const maxed = max !== undefined && bought >= max;
                     const cost = shopItemCost(key, bought);
                     return (
                       <button
                         key={key}
                         onClick={() => buyItem(key)}
-                        disabled={cores < cost}
+                        disabled={maxed || cores < cost}
                         className="flex w-28 flex-col items-center gap-0.5 rounded-lg bg-white/10 px-2 py-2 text-center text-xs text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20 disabled:opacity-40"
                       >
                         <span className="font-medium">{item.label}</span>
                         <span className="text-white/60">{item.desc}</span>
-                        <span className="font-heading text-[#ffd15e]">{cost}</span>
+                        <span className="font-heading text-[#ffd15e]">
+                          {maxed ? (max === 1 ? "Owned" : "Maxed") : cost}
+                        </span>
                       </button>
                     );
                   })}
                 </div>
+                <button
+                  onClick={rerollShop}
+                  disabled={shopRerollsLeft <= 0 || cores < SHOP_REROLL_COST}
+                  className="pointer-events-auto rounded-full bg-white/10 px-4 py-1 text-xs font-medium text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20 disabled:opacity-40"
+                >
+                  Reroll ({SHOP_REROLL_COST} core) — {shopRerollsLeft} left
+                </button>
                 <button
                   onClick={closeShop}
                   className="pointer-events-auto rounded-full bg-[#ff5e9c]/20 px-5 py-1.5 text-sm font-medium text-white ring-1 ring-[#ff5e9c]/40 backdrop-blur-sm transition-colors hover:bg-[#ff5e9c]/30"

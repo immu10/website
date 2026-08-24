@@ -157,10 +157,28 @@ export const CHASE_DISTANCE_SCORE_PER_PX = 0.1;
 // exponential growth — doubling every ~14s, thousands of px/sec within two
 // minutes. Elapsed seconds grows at a flat 1/sec no matter how fast you're
 // going, so this ramp is a plain, predictable straight line instead.
-export const CHASE_SCROLL_ACCEL = 8; // px/sec, added per second elapsed
+//
+// The acceleration itself now decays toward a floor rather than staying
+// flat: a straight line at 8px/sec^2 forever meant a run that survived
+// several bosses was outrunning what's dodgeable long before it ran out of
+// lives. Speed still climbs without limit — it's the *rate* of climb that
+// eases off, so there's no cap to hit and no discontinuity to feel.
+export const CHASE_SCROLL_ACCEL = 8; // px/sec^2 at t=0
+export const CHASE_SCROLL_ACCEL_FLOOR = 2; // px/sec^2 the accel decays toward
+export const CHASE_SCROLL_ACCEL_DECAY_TAU = 60; // seconds
 
+// Closed-form integral of accel(t) = FLOOR + decay * exp(-t/TAU) — no need
+// to accumulate speed frame by frame, so it stays a pure function of
+// elapsed time like the rest of the ramp helpers.
 export function chaseScrollSpeedForElapsed(elapsedSeconds) {
-  return CHASE_BASE_SCROLL_SPEED + elapsedSeconds * CHASE_SCROLL_ACCEL;
+  const decay = CHASE_SCROLL_ACCEL - CHASE_SCROLL_ACCEL_FLOOR;
+  return (
+    CHASE_BASE_SCROLL_SPEED +
+    CHASE_SCROLL_ACCEL_FLOOR * elapsedSeconds +
+    decay *
+      CHASE_SCROLL_ACCEL_DECAY_TAU *
+      (1 - Math.exp(-elapsedSeconds / CHASE_SCROLL_ACCEL_DECAY_TAU))
+  );
 }
 
 export function chaseSpawnIntervalForElapsed(elapsedSeconds) {
@@ -213,16 +231,43 @@ export function chaseSpawnAsteroid(id, elapsedSeconds) {
 
 export const BOSS_INTERVAL_SECONDS = 20;
 export const BOSS_RADIUS = 60;
-export const BOSS_HEALTH = 25; // tier 0 baseline — see bossHealthForTier
+export const BOSS_HEALTH = 40; // tier 0 baseline — see bossHealthForTier
 export const BOSS_SCORE = 1000;
 export const BOSS_ENTRY_SPEED = 90; // px/sec while flying in from the right
 export const BOSS_HOVER_X_FRACTION = 0.72; // settles here once it arrives
 export const BOSS_BOB_AMPLITUDE = 70; // px, vertical weave once settled
 export const BOSS_BOB_SPEED = 0.6; // rad/sec-ish
-export const BOSS_FIRE_INTERVAL_MS = 320; // tier 0 baseline
-export const BOSS_FIRE_INTERVAL_MIN_MS = 150;
 export const BOSS_BULLET_SPEED = 220; // tier 0 baseline
 export const BOSS_BULLET_RADIUS = 4;
+
+// Bullets come out in bursts, not a continuous stream: a flat interval that
+// floored at 150ms by the mid tiers read as nonstop spam with no rhythm to
+// learn. A burst is telegraphed (windup), fires a tight volley, then leaves
+// a real gap to move in. Difficulty scales by *burst size*, not by shrinking
+// the gap — the pause only tapers mildly, so there's always a window.
+export const BOSS_BURST_SIZE_BASE = 2;
+export const BOSS_BURST_SIZE_PER_TIER = 0.5;
+export const BOSS_BURST_SIZE_MAX = 6;
+export const BOSS_BURST_SHOT_INTERVAL_MS = 100; // spacing within one burst
+export const BOSS_BURST_PAUSE_MS = 900; // between bursts, tier 0
+export const BOSS_BURST_PAUSE_MIN_MS = 600;
+export const BOSS_BURST_WINDUP_MS = 700;
+
+// Spiral: bullets radiate from the boss center on a few rotating arms. Arms
+// rather than a solid disc on purpose — the wide empty bands between them
+// are the dodge lane, so it's a bullet-hell pattern that's always readable.
+export const BOSS_SPIRAL_ARM_COUNT = 3;
+export const BOSS_SPIRAL_BULLET_SPEED = 170;
+export const BOSS_SPIRAL_DURATION_MS = 2600;
+export const BOSS_SPIRAL_ROTATION_SPEED = 1.6; // rad/sec
+export const BOSS_SPIRAL_SHOT_INTERVAL_MS = 90;
+export const BOSS_SPIRAL_WINDUP_MS = 700;
+
+// Tier 6+ bosses periodically go untouchable and run a scripted pattern or
+// two before becoming a target again — a breather from DPS-racing that has
+// to be survived rather than shot through.
+export const BOSS_PHASE_MIN_TIER = 6;
+export const BOSS_PHASE_INTERVAL_MS = 16000;
 
 // Can't be damaged until it's fully flown in and held position for a beat —
 // otherwise a lucky shot during the entry animation kills it before it's
@@ -242,18 +287,39 @@ export const BOSS_INTRO_GRACE_MS = 900;
 // forces-you-to-keep-moving threat rather than one dodge and done.
 export const BOSS_LASER_INTERVAL_MS = 3500; // tier 0 baseline, between volleys
 export const BOSS_LASER_INTERVAL_MIN_MS = 1800;
-export const BOSS_LASER_CHARGE_MS = 1100; // first beam in a volley
+export const BOSS_LASER_CHARGE_MS = 1400; // first beam in a volley
 export const BOSS_LASER_RECHARGE_MS = 500; // subsequent beams in the same volley
 export const BOSS_LASER_ACTIVE_MS = 350;
 export const BOSS_LASER_HALF_WIDTH = 9;
-export const BOSS_LASER_MAX_BEAMS = 3;
+export const BOSS_LASER_MAX_BEAMS = 4;
+
+// Simultaneous mode picks beam positions from this many evenly spaced slots
+// and drops one at random — the dropped slot is a guaranteed full-height
+// lane, in a different place every time, so the pattern is survivable
+// without being memorizable.
+export const BOSS_LASER_PATTERN_SLOTS = BOSS_LASER_MAX_BEAMS + 1;
 
 export function bossHealthForTier(tier) {
-  return BOSS_HEALTH + tier * 6;
+  return BOSS_HEALTH + tier * 40;
 }
 
-export function bossFireIntervalForTier(tier) {
-  return Math.max(BOSS_FIRE_INTERVAL_MIN_MS, BOSS_FIRE_INTERVAL_MS - tier * 30);
+export function bossBurstSizeForTier(tier) {
+  return Math.min(
+    BOSS_BURST_SIZE_MAX,
+    Math.floor(BOSS_BURST_SIZE_BASE + tier * BOSS_BURST_SIZE_PER_TIER)
+  );
+}
+
+export function bossBurstPauseForTier(tier) {
+  return Math.max(BOSS_BURST_PAUSE_MIN_MS, BOSS_BURST_PAUSE_MS - tier * 35);
+}
+
+// Spiral is a surprise the first time it shows up (a coin flip's worth at
+// tier 2), then just another card in the deck alongside bursts.
+export function bossSpiralChanceForTier(tier) {
+  if (tier < 2) return 0;
+  if (tier === 2) return 0.3;
+  return 0.5;
 }
 
 export function bossBulletSpeedForTier(tier) {
@@ -264,12 +330,21 @@ export function bossLaserIntervalForTier(tier) {
   return Math.max(BOSS_LASER_INTERVAL_MIN_MS, BOSS_LASER_INTERVAL_MS - tier * 300);
 }
 
-// Beams per volley: 1 for the first couple of bosses, 2 from the third
-// boss on, capped at BOSS_LASER_MAX_BEAMS from the fifth boss on.
+// Beams per volley: one more every second tier, so it climbs steadily
+// instead of plateauing.
 export function bossLaserBeamsForTier(tier) {
-  if (tier >= 4) return BOSS_LASER_MAX_BEAMS;
-  if (tier >= 2) return 2;
-  return 1;
+  return Math.min(BOSS_LASER_MAX_BEAMS, 1 + Math.floor(tier / 2));
+}
+
+// The y positions for a simultaneous volley — see BOSS_LASER_PATTERN_SLOTS.
+export function bossLaserPatternYs() {
+  const skip = Math.floor(Math.random() * BOSS_LASER_PATTERN_SLOTS);
+  const ys = [];
+  for (let i = 0; i < BOSS_LASER_PATTERN_SLOTS; i++) {
+    if (i === skip) continue;
+    ys.push(((i + 0.5) / BOSS_LASER_PATTERN_SLOTS) * BOARD_H);
+  }
+  return ys;
 }
 
 export function makeBoss(now, tier) {
@@ -280,21 +355,45 @@ export function makeBoss(now, tier) {
     tier,
     health: bossHealthForTier(tier),
     maxHealth: bossHealthForTier(tier),
-    fireInterval: bossFireIntervalForTier(tier),
     bulletSpeed: bossBulletSpeedForTier(tier),
     laserInterval: bossLaserIntervalForTier(tier),
     laserBeamsTotal: bossLaserBeamsForTier(tier),
+    laserVolleyBeams: 0, // beams in the volley currently running
     laserBeamsRemaining: 0,
     spawnedAt: now,
-    lastFireTime: now,
     entered: false,
     vulnerableAt: Infinity,
     rotation: -Math.PI / 2,
     laserState: "idle", // idle | charging | firing
+    laserPatternMode: "lockon", // lockon (laserY) | simultaneous (laserYs)
     laserY: BOARD_H / 2,
+    laserYs: [],
     laserPhaseAt: 0,
     nextLaserAt: Infinity,
+    // Burst/spiral share one "what's the gun doing" slot — only one of them
+    // runs at a time, with the laser on its own parallel timer as before.
+    burstState: "pause", // windup | firing | pause
+    burstShotsFired: 0,
+    burstPhaseAt: now,
+    burstSizeThisVolley: bossBurstSizeForTier(tier),
+    burstAimed: true,
+    spiralState: "idle", // idle | windup | firing
+    spiralAngle: 0,
+    spiralPhaseAt: 0,
+    spiralShotAccum: 0,
+    // Invulnerability phases (tier 6+ only) — see BOSS_PHASE_MIN_TIER.
+    phaseActive: false,
+    phaseQueue: [],
+    nextPhaseAt: Infinity,
   };
+}
+
+// 1-2 patterns, rolled fresh for each invulnerability phase so a phase is
+// never the same twice in a row for long.
+export function rollBossPhaseAttacks() {
+  const pool = ["burst", "laser", "spiral"];
+  const count = 1 + Math.floor(Math.random() * 2);
+  return Array.from({ length: count }, () => pool[Math.floor(Math.random() * pool.length)]);
 }
 
 // --- Shop (chase mode, opens right after each boss kill) ---
@@ -305,30 +404,120 @@ export function makeBoss(now, tier) {
 // rather than all piling into one stat.
 
 export function coresForBossTier(tier) {
-  return 3 + tier;
+  return 5 + Math.floor(tier * 1.5);
 }
 
 export const SHOP_ITEMS = {
-  heat_capacity: { label: "Heat Capacity", desc: "+15 max heat", baseCost: 3 },
-  coolant_boost: { label: "Coolant Boost", desc: "+25% cool rate", baseCost: 3 },
+  heat_capacity: { label: "Heat Capacity", desc: "+15 max heat", baseCost: 2 },
+  coolant_boost: { label: "Coolant Boost", desc: "+25% cool rate", baseCost: 2 },
   extra_life: { label: "Extra Life", desc: "+1 life", baseCost: 5 },
-  lucky_scavenger: { label: "Lucky Scavenger", desc: "+3% powerup drops", baseCost: 4 },
-  shorter_overheat: { label: "Shorter Overheat", desc: "-15% lockout time", baseCost: 4 },
+  lucky_scavenger: { label: "Lucky Scavenger", desc: "+2% powerup drops", baseCost: 2 },
+  shorter_overheat: { label: "Shorter Overheat", desc: "-15% lockout time", baseCost: 3 },
+  pierce: { label: "Piercing Rounds", desc: "Bullets pierce through targets", baseCost: 4 },
+  damage: { label: "Sharpened Rounds", desc: "+0.25 damage per hit", baseCost: 3 },
+  // No free starting charge — the deflector is fully store-gated now, so
+  // the first purchase is what gives you your first charge at all. Costs
+  // are a hand-set list (DEFLECTOR_COSTS) rather than the usual growth
+  // formula, since the jump from 3 to 6 is steeper than 1.35x.
+  deflector: { label: "Deflector Charge", desc: "+1 shield charge (max 4 total)", baseCost: 3 },
+  dual_fire: {
+    label: "Twin Cannons",
+    desc: "Fire two guns, +50% heat instead of +100%",
+    baseCost: 8,
+  },
 };
 
-export const SHOP_COST_GROWTH = 1.5;
+// Everything not listed here is uncapped — repeat-purchase cost growth is
+// the throttle. These are the ones where more copies would mean nothing
+// (a flag you either have or don't) or would trivialize getting hit.
+export const SHOP_ITEM_MAX_PURCHASES = {
+  pierce: 1,
+  dual_fire: 1,
+  deflector: 4,
+};
+
+export const SHOP_COST_GROWTH = 1.35;
+
+// Deflector's 4 purchases have their own hand-tuned prices instead of the
+// usual growth formula.
+export const DEFLECTOR_COSTS = [3, 6, 8, 10];
 
 export function shopItemCost(itemKey, timesBought) {
+  if (itemKey === "deflector") return DEFLECTOR_COSTS[timesBought];
   return Math.round(SHOP_ITEMS[itemKey].baseCost * Math.pow(SHOP_COST_GROWTH, timesBought));
+}
+
+// Some items don't enter the offer pool until a run has gotten far enough —
+// twin cannons and piercing rounds are strong enough that seeing them turn
+// 1 in an early roll would swing the whole shop economy for that visit.
+// Everything not listed here is eligible from the first shop on.
+export const SHOP_ITEM_MIN_BOSSES_DEFEATED = {
+  dual_fire: 3,
+  pierce: 4,
+};
+
+// Gacha shop: instead of every item being buyable every visit, the trader
+// offers a random SHOP_OFFER_SIZE-item subset, with a couple of paid
+// rerolls if the draw is bad. Cores spent on a reroll are gone whether or
+// not the new draw is any better — same as everything else in the shop,
+// cores are a sunk cost the moment they're spent.
+export const SHOP_OFFER_SIZE = 4;
+export const SHOP_REROLLS = 2;
+export const SHOP_REROLL_COST = 1;
+
+// Eligible = not already maxed out, and past its unlock gate if it has
+// one. Falls back to fewer than SHOP_OFFER_SIZE items early on rather than
+// padding the offer with something you can't buy.
+export function rollShopOffer(shopPurchaseCounts, bossesDefeated) {
+  const pool = Object.keys(SHOP_ITEMS).filter((key) => {
+    const max = SHOP_ITEM_MAX_PURCHASES[key];
+    const bought = shopPurchaseCounts[key] || 0;
+    if (max !== undefined && bought >= max) return false;
+    const minBosses = SHOP_ITEM_MIN_BOSSES_DEFEATED[key];
+    if (minBosses !== undefined && bossesDefeated < minBosses) return false;
+    return true;
+  });
+  const offer = [];
+  while (offer.length < SHOP_OFFER_SIZE && pool.length > 0) {
+    const i = Math.floor(Math.random() * pool.length);
+    offer.push(pool.splice(i, 1)[0]);
+  }
+  return offer;
 }
 
 // Merchant ship + shield shown while the shop is open. Asteroids that reach
 // the shield are destroyed there instead of reaching the player — the
 // player is untouchable for the whole interlude regardless, this is just
 // the in-world reason why.
-export const MERCHANT_OFFSET_X = 100; // px right of the ship, spawn position
+export const MERCHANT_OFFSET_X = 100; // px right of the ship, resting position
 export const MERCHANT_SHIELD_OFFSET_X = 55; // further right of the merchant
 export const MERCHANT_SHIELD_RADIUS = 50;
+
+// Entrance: flies in from a true random point on the board's border
+// (weighted by edge length, not one of a fixed set of directions — see
+// randomBoardPerimeterPoint) and eases into its resting spot, facing its
+// exit heading the whole time so it reads as drifting in sideways rather
+// than turning to face its approach. Exit: always straight ahead of the
+// ship's current lane regardless of which edge it came in from, sweeping
+// the field clean as it goes — a flythrough, not a retreat.
+export const MERCHANT_ENTER_MS = 550;
+export const MERCHANT_LEAVE_SPEED = 300; // px/sec
+export const MERCHANT_CLEAR_RADIUS = 50; // matches the shield's reach
+
+// Weighted by edge length so every point on the perimeter is equally
+// likely, not one of 4 fixed directions. 20px past the edge, same margin
+// spawnEdgePosition uses, so it reads as arriving from off-screen.
+export function randomBoardPerimeterPoint() {
+  const perimeter = 2 * (BOARD_W + BOARD_H);
+  let d = Math.random() * perimeter;
+  if (d < BOARD_W) return { x: d, y: -20 };
+  d -= BOARD_W;
+  if (d < BOARD_H) return { x: BOARD_W + 20, y: d };
+  d -= BOARD_H;
+  if (d < BOARD_W) return { x: BOARD_W - d, y: BOARD_H + 20 };
+  d -= BOARD_W;
+  return { x: -20, y: BOARD_H - d };
+}
 
 // --- Powerups ---
 // Different timed buffs stack freely (shield + rapid fire + speed boost can
@@ -344,7 +533,10 @@ export const MERCHANT_SHIELD_RADIUS = 50;
 // game-changing ones (bomb especially) only start appearing once a run has
 // proven it's going somewhere.
 export const POWERUP_TYPES = {
-  shield: { duration: 6000, instant: false, unlockWave: 1, unlockSeconds: 0 },
+  // instant: grants a bonus deflector charge on pickup rather than a timed
+  // buff — see DEFLECTOR_RECHARGE_MS. Duration is deliberately 0 so it
+  // never lands in the active-buffs set.
+  shield: { duration: 0, instant: true, unlockWave: 1, unlockSeconds: 0 },
   rapid_fire: { duration: 8000, instant: false, unlockWave: 1, unlockSeconds: 0 },
   extra_life: { duration: 0, instant: true, unlockWave: 1, unlockSeconds: 0 },
   speed_boost: { duration: 8000, instant: false, unlockWave: 2, unlockSeconds: 20 },
@@ -368,6 +560,24 @@ const POWERUP_DRIFT_SPEED_MIN = 15;
 const POWERUP_DRIFT_SPEED_MAX = 40;
 
 export const MAX_LIVES = 3;
+
+// Deflector: every ship has at least one charge, and a charge eats exactly
+// one hit. Base charges come back on their own after a cooldown (bought
+// ones included); the shield powerup instead grants a single non-
+// regenerating bonus charge, a spare heart rather than a window of
+// invincibility — the old timed full-invuln shield made whole boss phases
+// free, which is why this replaced it.
+export const DEFLECTOR_RECHARGE_MS = 8000;
+export const DEFLECTOR_FLASH_MS = 250;
+// One contact would otherwise burn every charge in consecutive frames,
+// since a blocked hit leaves the ship exactly where it was, still touching
+// whatever hit it.
+export const DEFLECTOR_HIT_GRACE_MS = 400;
+
+// Two guns cost less heat than two shots would — the upgrade is meant to be
+// worth buying, so the second barrel is a discount, not a doubling.
+export const DUAL_FIRE_HEAT_MULTIPLIER = 1.5;
+export const DUAL_FIRE_OFFSET = 14; // px to each side of the ship's centerline — wing-mounted
 
 export const RAPID_FIRE_COOLDOWN_MULTIPLIER = 0.4;
 export const SPREAD_SHOT_ANGLE = 0.22; // radians between center and outer bullets
