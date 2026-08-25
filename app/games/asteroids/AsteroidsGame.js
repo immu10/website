@@ -255,6 +255,42 @@ function createInitialState() {
   };
 }
 
+// Continuous collision check between two moving circles — did they ever get
+// within (ra+rb) of each other at any point *during* this frame, not just
+// at its end. circlesCollide alone only looks at where things ended up, so
+// at high enough speed (chase mode's scroll ramp has no ceiling) a bullet
+// can cross an asteroid's whole hitbox between one frame and the next
+// without either frame's endpoint ever landing inside it — a bullet
+// visibly passing through something it should have hit.
+//
+// Positions passed in are END-of-frame (after this frame's own += vx*dt
+// already ran, same as everywhere circlesCollide is used) — start-of-frame
+// position is reconstructed as pos - vel*dt rather than tracked separately.
+// Working in a's frame of reference (relative position/velocity) reduces
+// "two moving circles" to "one moving point vs. one still circle," which is
+// the standard trick — same answer, one fewer moving part to reason about.
+function sweptCirclesCollide(ax, ay, avx, avy, ar, bx, by, bvx, bvy, br, dt) {
+  const ax0 = ax - avx * dt;
+  const ay0 = ay - avy * dt;
+  const bx0 = bx - bvx * dt;
+  const by0 = by - bvy * dt;
+  const px = ax0 - bx0;
+  const py = ay0 - by0;
+  const vx = avx - bvx;
+  const vy = avy - bvy;
+  const r = ar + br;
+  const vv = vx * vx + vy * vy;
+  if (vv < 1e-6) return px * px + py * py < r * r;
+  // Time within [0, dt] the two are closest — vertex of the |p + v*t|^2
+  // parabola, clamped to this frame's span.
+  let t = -(px * vx + py * vy) / vv;
+  if (t < 0) t = 0;
+  else if (t > dt) t = dt;
+  const cx = px + vx * t;
+  const cy = py + vy * t;
+  return cx * cx + cy * cy < r * r;
+}
+
 // Splits a fresh wave of large asteroids in around the edges — never right
 // on top of the ship's center-spawn position.
 function spawnWave(s, wave) {
@@ -1625,7 +1661,9 @@ export default function AsteroidsGame() {
             !s.boss.phaseActive &&
             now >= s.boss.vulnerableAt &&
             !(b.hitIds && b.hitIds.has("boss")) &&
-            circlesCollide(b.x, b.y, 2, s.boss.x, s.boss.y, BOSS_RADIUS)
+            // Boss motion (bob) is slow enough to treat as stationary here —
+            // it's the bullet's speed that gets extreme, not the boss's.
+            sweptCirclesCollide(b.x, b.y, b.vx, b.vy, 2, s.boss.x, s.boss.y, 0, 0, BOSS_RADIUS, dt)
           ) {
             // A piercing bullet overlaps the boss for many frames, so it has
             // to remember it already scored — asteroids need no such
@@ -1639,7 +1677,15 @@ export default function AsteroidsGame() {
           for (const a of s.asteroids) {
             if (deadAsteroids.has(a.id)) continue;
             const { radius, score: pts } = ASTEROID_SIZES[a.size];
-            if (circlesCollide(b.x, b.y, 2, a.x, a.y, radius)) {
+            // Swept only in chase — centered-mode asteroids/bullets wrap
+            // around the board edges, which would otherwise read as a
+            // huge one-frame jump and produce bogus phantom collisions.
+            // Chase never wraps (culled at the edges instead), and it's
+            // the only mode where speed runs away far enough to tunnel.
+            const collided = chase
+              ? sweptCirclesCollide(b.x, b.y, b.vx, b.vy, 2, a.x, a.y, a.vx, a.vy, radius, dt)
+              : circlesCollide(b.x, b.y, 2, a.x, a.y, radius);
+            if (collided) {
               if (!pierce) deadBullets.add(b);
               deadAsteroids.add(a.id);
               // Chase mode's score is distance + boss bonuses only —
@@ -1704,7 +1750,24 @@ export default function AsteroidsGame() {
           let hit = false;
           for (const a of s.asteroids) {
             const { radius } = ASTEROID_SIZES[a.size];
-            if (circlesCollide(ship.x, ship.y, SHIP_RADIUS * 0.8, a.x, a.y, radius)) {
+            // Same wrap caveat as the bullet-vs-asteroid check above —
+            // swept only makes sense where nothing wraps mid-frame.
+            const shipHit = chase
+              ? sweptCirclesCollide(
+                  ship.x,
+                  ship.y,
+                  ship.vx,
+                  ship.vy,
+                  SHIP_RADIUS * 0.8,
+                  a.x,
+                  a.y,
+                  a.vx,
+                  a.vy,
+                  radius,
+                  dt
+                )
+              : circlesCollide(ship.x, ship.y, SHIP_RADIUS * 0.8, a.x, a.y, radius);
+            if (shipHit) {
               hit = true;
               break;
             }
@@ -1714,7 +1777,23 @@ export default function AsteroidsGame() {
           }
           if (!hit) {
             for (const b of s.bossBullets) {
-              if (circlesCollide(ship.x, ship.y, SHIP_RADIUS * 0.8, b.x, b.y, BOSS_BULLET_RADIUS)) {
+              // Boss bullets only exist in chase mode, which never wraps —
+              // safe to always use the swept check here.
+              if (
+                sweptCirclesCollide(
+                  ship.x,
+                  ship.y,
+                  ship.vx,
+                  ship.vy,
+                  SHIP_RADIUS * 0.8,
+                  b.x,
+                  b.y,
+                  b.vx,
+                  b.vy,
+                  BOSS_BULLET_RADIUS,
+                  dt
+                )
+              ) {
                 hit = true;
                 break;
               }

@@ -7,7 +7,7 @@ export const metadata = { title: "Asteroids — immu10" };
 
 export default function AsteroidsPage() {
   return (
-    <main className="flex flex-1 flex-col items-center gap-6 p-8">
+    <main className="game-page flex flex-1 flex-col items-center gap-6 p-8">
       <div className="flex w-full max-w-5xl items-center justify-between">
         <a href="/games" className="font-medium underline underline-offset-4">
           ← Games

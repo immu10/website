@@ -404,7 +404,7 @@ export function rollBossPhaseAttacks() {
 // rather than all piling into one stat.
 
 export function coresForBossTier(tier) {
-  return 5 + Math.floor(tier * 1.5);
+  return 5 + tier;
 }
 
 export const SHOP_ITEMS = {
@@ -434,13 +434,14 @@ export const SHOP_ITEM_MAX_PURCHASES = {
   pierce: 1,
   dual_fire: 1,
   deflector: 4,
+  extra_life: 5,
 };
 
 export const SHOP_COST_GROWTH = 1.35;
 
 // Deflector's 4 purchases have their own hand-tuned prices instead of the
 // usual growth formula.
-export const DEFLECTOR_COSTS = [3, 6, 8, 10];
+export const DEFLECTOR_COSTS = [5, 6, 8, 10];
 
 export function shopItemCost(itemKey, timesBought) {
   if (itemKey === "deflector") return DEFLECTOR_COSTS[timesBought];
@@ -452,6 +453,7 @@ export function shopItemCost(itemKey, timesBought) {
 // 1 in an early roll would swing the whole shop economy for that visit.
 // Everything not listed here is eligible from the first shop on.
 export const SHOP_ITEM_MIN_BOSSES_DEFEATED = {
+  deflector: 2,
   dual_fire: 3,
   pierce: 4,
 };
