@@ -294,7 +294,11 @@ export function chaseSpawnAsteroid(id, scrollSpeed) {
 export const BOSS_INTERVAL_SECONDS = 20;
 export const BOSS_RADIUS = 60;
 export const BOSS_HEALTH = 40; // tier 0 baseline — see bossHealthForTier
-export const BOSS_SCORE = 1000;
+export const BOSS_SCORE = 1000; // tier 0 baseline — see bossScoreForTier
+
+export function bossScoreForTier(tier) {
+  return BOSS_SCORE + tier * 500;
+}
 export const BOSS_ENTRY_SPEED = 90; // px/sec while flying in from the right
 export const BOSS_HOVER_X_FRACTION = 0.72; // settles here once it arrives
 export const BOSS_BOB_AMPLITUDE = 70; // px, vertical weave once settled

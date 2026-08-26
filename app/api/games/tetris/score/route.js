@@ -115,7 +115,7 @@ export async function POST(request) {
     // Only worth checking the leaderboard-announcement bot when this
     // submission actually moved the stored score — an unchanged (lower)
     // resubmit can't have changed anyone's rank.
-    if (changed > 0) await notifyIfTopScore(redis, GAME, id, displayName, score);
+    if (changed > 0) await notifyIfTopScore(redis, GAME, id, displayName);
   } else {
     const id = randomUUID();
     await redis.hset(`tetris:entry:${id}`, {
@@ -125,7 +125,7 @@ export async function POST(request) {
       ts: Date.now(),
     });
     await redis.zadd("tetris:leaderboard", { score, member: id });
-    await notifyIfTopScore(redis, GAME, id, displayName, score);
+    await notifyIfTopScore(redis, GAME, id, displayName);
   }
 
   await redis.zremrangebyrank("tetris:leaderboard", 0, -(MAX_ENTRIES + 1));

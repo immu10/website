@@ -28,7 +28,7 @@ const commands = [
         name: "channel",
         description: "Channel to post announcements in",
         required: true,
-        channel_types: [0], // GUILD_TEXT
+        channel_types: [0, 5], // GUILD_TEXT, GUILD_ANNOUNCEMENT
       },
     ],
   },

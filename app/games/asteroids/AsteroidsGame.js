@@ -59,7 +59,7 @@ import {
   makePowerup,
   BOSS_INTERVAL_SECONDS,
   BOSS_RADIUS,
-  BOSS_SCORE,
+  bossScoreForTier,
   BOSS_ENTRY_SPEED,
   BOSS_HOVER_X_FRACTION,
   BOSS_BOB_AMPLITUDE,
@@ -1542,6 +1542,14 @@ export default function AsteroidsGame() {
           if (s.distanceUiAccum > 200) {
             s.distanceUiAccum = 0;
             setDistance(Math.floor(s.distance));
+            // Distance-only score growth otherwise never syncs to the
+            // displayed/submitted-looking score — setScore below only
+            // fires on kills/powerups/boss, so a run that never kills
+            // anything showed 0 the whole time and on the game-over
+            // screen, despite the real score (stateRef.current.score,
+            // what actually gets submitted) climbing correctly the whole
+            // way. Same 200ms throttle as distance, not every frame.
+            setScore(s.score);
           }
         } else {
           for (const a of s.asteroids) {
@@ -1796,7 +1804,7 @@ export default function AsteroidsGame() {
         let bossDefeated = false;
         if (s.boss && s.boss.health <= 0) {
           bossDefeated = true;
-          s.score += BOSS_SCORE * scoreMult;
+          s.score += bossScoreForTier(s.boss.tier) * scoreMult;
           // Guaranteed reward for the kill itself — unlike the random
           // extra_life powerup, this isn't capped at MAX_LIVES.
           s.lives += 1;
