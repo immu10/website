@@ -40,17 +40,96 @@ const GAME_LABELS = {
   "asteroids-chase": "Asteroids — Chase",
 };
 
-const RANK_MEDAL = ["🥇", "🥈", "🥉"];
+// Asteroids' two leaderboards share one page/mode-select screen.
+const GAME_PLAY_URL = {
+  tetris: "https://www.immu10.com/games/tetris",
+  typewriter: "https://www.immu10.com/games/typewriter",
+  "asteroids-classic": "https://www.immu10.com/games/asteroids",
+  "asteroids-chase": "https://www.immu10.com/games/asteroids",
+};
+
+const GAME_THUMBNAIL = {
+  tetris: "https://www.immu10.com/games/tetris-thumb.png",
+  typewriter: "https://www.immu10.com/games/typewriter-thumb.png",
+  "asteroids-classic": "https://www.immu10.com/games/asteroids-thumb.png",
+  "asteroids-chase": "https://www.immu10.com/games/asteroids-thumb.png",
+};
+
+// One gif per rank, self-hosted under public/discord/ — a third-party CDN
+// link (Klipy, Tenor, whatever) can change its URL structure or hotlink
+// policy at any time with no warning; a file we actually own can't break
+// unless we remove it ourselves. www, not the bare domain — immu10.com
+// 308-redirects to it, and Discord's embed fetcher doesn't follow that.
+const RANK_GIF = [
+  "https://www.immu10.com/discord/rank1.gif",
+  "https://www.immu10.com/discord/rank2.gif",
+  "https://www.immu10.com/discord/rank3.gif",
+];
+
+// Gold / silver / bronze — the embed's left-border accent color, Carl-bot-
+// style boxed look.
+const RANK_COLOR = [0xffd700, 0xc0c0c0, 0xcd7f32];
 
 // Fire-and-forget-safe: every failure here is caught and swallowed, never
 // thrown — this is called from score-submission routes, and a Discord or
-// DB hiccup here must never break someone's actual score submission.
-export async function broadcastTopScore(game, name, score, rank) {
+// DB hiccup here must never break someone's actual score submission. Takes
+// the caller's already-constructed Redis client (see notifyIfTopScore)
+// since it needs to read the current top 3, not just the one entry that
+// changed.
+export async function broadcastTopScore(redis, game, name, rank) {
   if (!discordConfigured() || !dbConfigured()) return;
   try {
     const label = GAME_LABELS[game] ?? game;
-    const medal = RANK_MEDAL[rank] ?? "";
-    const content = `${medal} **${name}** just took **#${rank + 1}** on **${label}** with **${score.toLocaleString()}**!`;
+    const gif = RANK_GIF[rank] ?? "";
+    const playUrl = GAME_PLAY_URL[game] ?? "https://www.immu10.com/games";
+    const thumbnail = GAME_THUMBNAIL[game];
+
+    // Current top 3 as of this change, not just the entry that moved —
+    // same read shape as app/lib/leaderboard.js's fetchLeaderboard.
+    const raw = await redis.zrange(`${game}:leaderboard`, 0, 2, {
+      rev: true,
+      withScores: true,
+    });
+    const ids = [];
+    const scores = [];
+    for (let i = 0; i < raw.length; i += 2) {
+      ids.push(raw[i]);
+      scores.push(Number(raw[i + 1]));
+    }
+    let names = [];
+    if (ids.length) {
+      const pipeline = redis.pipeline();
+      ids.forEach((id) => pipeline.hget(`${game}:entry:${id}`, "name"));
+      names = await pipeline.exec();
+    }
+
+    // Play link tucked onto the end of the Player column instead of its
+    // own field — a whole extra field adds its own margin plus (with the
+    // zero-width-space name trick needed for an unlabeled field) an
+    // invisible header line, both of which just read as a big gap.
+    const playerLines = names.map((n, i) => `${i + 1}. ${n ?? "???"}`);
+    playerLines.push(`[Play the game ↗](${playUrl})`);
+    const scoreLines = scores.map((s) => s.toLocaleString());
+
+    const body = {
+      embeds: [
+        {
+          title: `New #${rank + 1} on ${label}!`,
+          description: `**${name}** just took **#${rank + 1}**!`,
+          color: RANK_COLOR[rank] ?? 0xffffff,
+          fields: [
+            { name: "Player", value: playerLines.join("\n"), inline: true },
+            { name: "Score", value: scoreLines.join("\n"), inline: true },
+          ],
+          // thumbnail: small box, top-right — the game's own icon.
+          ...(thumbnail ? { thumbnail: { url: thumbnail } } : {}),
+          // image: big block at the bottom — the rank gif, inside the
+          // embed's own image field so it renders in the boxed card
+          // itself, not as a separate unfurled block below it.
+          ...(gif ? { image: { url: gif } } : {}),
+        },
+      ],
+    };
 
     const sql = getDb();
     const rows = await sql`SELECT channel_id FROM discord_leaderboard_channels`;
@@ -63,7 +142,7 @@ export async function broadcastTopScore(game, name, score, rank) {
             Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ content }),
+          body: JSON.stringify(body),
         }).catch(() => {})
       )
     );
@@ -79,11 +158,11 @@ const TOP_RANK_THRESHOLD = 3;
 // 3 right now, and if so fires the broadcast. Takes the already-constructed
 // Redis client so callers don't need to import getRedis separately just
 // for this.
-export async function notifyIfTopScore(redis, game, id, name, score) {
+export async function notifyIfTopScore(redis, game, id, name) {
   try {
     const rank = await redis.zrevrank(`${game}:leaderboard`, id);
     if (rank !== null && rank !== undefined && rank < TOP_RANK_THRESHOLD) {
-      await broadcastTopScore(game, name, score, rank);
+      await broadcastTopScore(redis, game, name, rank);
     }
   } catch {
     // Never let this affect the score submission that triggered it.
