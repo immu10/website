@@ -98,6 +98,10 @@ export async function POST(request) {
 
   if (account) {
     const id = `user:${account.userId}`;
+    // This id is stable across submissions (unlike a guest's fresh id
+    // every time), so its rank right now is a meaningful "before" to
+    // compare against post-write — see notifyIfTopScore's beforeRank.
+    const beforeRank = await redis.zrevrank("asteroids-chase:leaderboard", id);
     // gt: only replace the stored score if this one is higher. ch: report
     // whether the score actually changed, so the hash below doesn't record
     // a "score" that doesn't match what's actually in the sorted set.
@@ -115,7 +119,7 @@ export async function POST(request) {
     // Only worth checking the leaderboard-announcement bot when this
     // submission actually moved the stored score — an unchanged (lower)
     // resubmit can't have changed anyone's rank.
-    if (changed > 0) await notifyIfTopScore(redis, GAME, id, displayName);
+    if (changed > 0) await notifyIfTopScore(redis, GAME, id, displayName, beforeRank);
   } else {
     const id = randomUUID();
     await redis.hset(`asteroids-chase:entry:${id}`, {
