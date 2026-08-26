@@ -132,6 +132,24 @@ const POWERUP_COLORS = {
   unlimited_fire: "#a8e6ff",
 };
 
+// Same order POWERUP_TYPES unlocks in — the legend doubles as a rough
+// "what's coming later" preview, not just a lookup table.
+const POWERUP_INFO = [
+  { type: "shield", label: "Shield", desc: "Adds a shield charge that blocks your next hit." },
+  { type: "rapid_fire", label: "Rapid Fire", desc: "Fire much faster for a while." },
+  { type: "extra_life", label: "Extra Life", desc: "+1 life instantly." },
+  { type: "speed_boost", label: "Speed Boost", desc: "Move faster for a while." },
+  { type: "spread_shot", label: "Spread Shot", desc: "Fire three bullets in a spread instead of one." },
+  {
+    type: "unlimited_fire",
+    label: "Unlimited Fire",
+    desc: "No weapon heat while active — fire nonstop.",
+    chaseOnly: true,
+  },
+  { type: "score_multiplier", label: "Score x2", desc: "Doubles your score for a while." },
+  { type: "bomb", label: "Bomb", desc: "Instantly destroys every asteroid on screen." },
+];
+
 // Responsive board sizing — same approach as Tetris's cellSize auto-fit:
 // budget out roughly how much horizontal/vertical chrome (heading, side
 // panel, page padding, controls hint, touch D-pad on phones) surrounds the
@@ -682,6 +700,7 @@ export default function AsteroidsGame() {
   const [shopPurchaseCounts, setShopPurchaseCounts] = useState({});
   const [shopOffer, setShopOffer] = useState([]);
   const [shopRerollsLeft, setShopRerollsLeft] = useState(0);
+  const [showPowerupLegend, setShowPowerupLegend] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [started, setStarted] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -1209,6 +1228,18 @@ export default function AsteroidsGame() {
       s.running = !next;
       return next;
     });
+  }, []);
+
+  // The legend overlay only renders alongside the paused/game-over/mode-
+  // select screen — opening it mid-run pauses first so it actually shows
+  // up instead of silently doing nothing.
+  const openPowerupLegend = useCallback(() => {
+    const s = stateRef.current;
+    if (s.started && !s.gameOver && s.running) {
+      s.running = false;
+      setPaused(true);
+    }
+    setShowPowerupLegend(true);
   }, []);
 
   const buyItem = useCallback((key) => {
@@ -2004,7 +2035,46 @@ export default function AsteroidsGame() {
             </div>
             {(!started || gameOver || paused) && (
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg bg-black/70 p-3 text-center">
-                {paused && !gameOver ? (
+                {showPowerupLegend ? (
+                  <>
+                    <p className="font-heading text-2xl text-white">Powerups</p>
+                    <div className="no-scrollbar pointer-events-auto flex max-h-[70%] max-w-[22rem] flex-col gap-2 overflow-y-auto px-1">
+                      {POWERUP_INFO.map((p) => (
+                        <div
+                          key={p.type}
+                          className="flex items-center gap-3 rounded-lg bg-white/5 p-2 text-left"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={SPRITE_SRC[p.type]}
+                            alt=""
+                            className="h-8 w-8 shrink-0"
+                          />
+                          <div>
+                            <p
+                              className="font-heading text-sm"
+                              style={{ color: POWERUP_COLORS[p.type] }}
+                            >
+                              {p.label}
+                              {p.chaseOnly && (
+                                <span className="ml-1.5 text-[0.6rem] font-normal uppercase tracking-wide text-white/40">
+                                  Chase only
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-white/60">{p.desc}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => setShowPowerupLegend(false)}
+                      className="pointer-events-auto rounded-full bg-white/10 px-5 py-2 font-medium text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20"
+                    >
+                      Back
+                    </button>
+                  </>
+                ) : paused && !gameOver ? (
                   <>
                     <p className="font-heading text-2xl text-white">Paused</p>
                     <button
@@ -2012,6 +2082,12 @@ export default function AsteroidsGame() {
                       className="pointer-events-auto rounded-full bg-white/10 px-5 py-2 font-medium text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20"
                     >
                       Resume
+                    </button>
+                    <button
+                      onClick={() => setShowPowerupLegend(true)}
+                      className="pointer-events-auto text-xs text-white/50 underline underline-offset-2 hover:text-white/80"
+                    >
+                      Powerups
                     </button>
                   </>
                 ) : gameOver ? (
@@ -2114,6 +2190,12 @@ export default function AsteroidsGame() {
                       edges. Chase: endless rightward flight, one life —
                       dodge or shoot what&apos;s in your way.
                     </p>
+                    <button
+                      onClick={() => setShowPowerupLegend(true)}
+                      className="pointer-events-auto text-xs text-white/50 underline underline-offset-2 hover:text-white/80"
+                    >
+                      Powerups
+                    </button>
                   </>
                 )}
               </div>
@@ -2193,6 +2275,13 @@ export default function AsteroidsGame() {
               className="rounded-full bg-white/10 px-4 py-1.5 text-xs font-medium text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20 disabled:opacity-40 sm:hidden"
             >
               {paused ? "Resume" : "Pause"}
+            </button>
+            <button
+              onClick={openPowerupLegend}
+              aria-label="Powerup legend"
+              className="flex h-7 w-7 items-center justify-center text-lg leading-none text-white/70 transition-colors hover:text-white sm:hidden"
+            >
+              ⓘ
             </button>
             <button
               onClick={() => setCanvasRotation((r) => (r + 90) % 360)}
@@ -2318,13 +2407,22 @@ export default function AsteroidsGame() {
             </div>
           )}
 
-          <button
-            onClick={togglePause}
-            disabled={!started || gameOver}
-            className="hidden rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20 disabled:opacity-40 sm:block"
-          >
-            {paused ? "Resume" : "Pause"}
-          </button>
+          <div className="hidden items-center gap-2 sm:flex">
+            <button
+              onClick={togglePause}
+              disabled={!started || gameOver}
+              className="flex-1 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/20 disabled:opacity-40"
+            >
+              {paused ? "Resume" : "Pause"}
+            </button>
+            <button
+              onClick={openPowerupLegend}
+              aria-label="Powerup legend"
+              className="flex h-9 w-9 shrink-0 items-center justify-center text-xl leading-none text-white/70 transition-colors hover:text-white"
+            >
+              ⓘ
+            </button>
+          </div>
 
           <div>
             <div className="flex items-center justify-between text-xs uppercase tracking-wide text-white/40">
