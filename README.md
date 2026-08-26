@@ -83,6 +83,7 @@ cp .env.local.example .env.local
 | `DATABASE_URL` | Games login | [Neon](https://neon.tech) free Postgres DB (or the Vercel Marketplace "Neon" add-on) — pooled connection string. Run `db/schema.sql` once against it (Neon console → SQL Editor) before first use. |
 | `AUTH_SECRET` | Games login | Any long random string (e.g. `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) — signs session cookies, not from any dashboard |
 | `CRON_SECRET` | Leaderboard backup cron | Any long random string — Vercel sends it automatically as the cron request's `Authorization` header when set, which is how the backup route tells a real scheduled run apart from a random hit on the same path |
+| `DISCORD_BOT_TOKEN` / `DISCORD_APPLICATION_ID` / `DISCORD_PUBLIC_KEY` | Leaderboard-announcement bot | [Discord Developer Portal](https://discord.com/developers/applications) → New Application → Bot tab (token) + General Information tab (application ID + public key). See `.env.local.example` for the interactions-endpoint setup steps. |
 
 AniList (Manhwas) needs no key. See `.env.local.example` for step-by-step notes.
 For production, add the same variables in **Vercel → Settings → Environment

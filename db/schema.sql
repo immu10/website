@@ -15,3 +15,14 @@ CREATE TABLE IF NOT EXISTS users (
   -- that were made but never really used.
   last_login TIMESTAMPTZ
 );
+
+-- One row per Discord server that's run /set-leaderboard-channel — see
+-- app/api/discord/interactions/route.js. guild_id is the primary key since
+-- re-running the command in the same server just repoints where it posts,
+-- not adds a second destination.
+CREATE TABLE IF NOT EXISTS discord_leaderboard_channels (
+  guild_id VARCHAR(32) PRIMARY KEY,
+  channel_id VARCHAR(32) NOT NULL,
+  set_by VARCHAR(32) NOT NULL, -- Discord user id of whoever ran the command
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
