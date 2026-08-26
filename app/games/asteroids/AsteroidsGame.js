@@ -19,6 +19,9 @@ import {
   ASTEROID_SIZES,
   asteroidCountForWave,
   wrap,
+  wrappedDistance,
+  WAVE_CLEAR_DELAY_MS,
+  WAVE_SPAWN_SAFE_RADIUS,
   randomAsteroidVelocity,
   spawnEdgePosition,
   makeAsteroid,
@@ -34,9 +37,13 @@ import {
   CHASE_DISTANCE_SCORE_PER_PX,
   chaseScrollSpeedForElapsed,
   chaseSpawnIntervalForElapsed,
+  chaseSpawnIntervalForDamp,
   chaseSpawnAsteroid,
   chaseBulletSpeedForElapsed,
   chaseFireCooldownForElapsed,
+  CHASE_BOSS_SCROLL_DAMP,
+  CHASE_BOSS_SCROLL_EASE_TAU,
+  chaseShipSpeedMultiplierForBossesDefeated,
   POWERUP_TYPES,
   POWERUP_DROP_CHANCE,
   POWERUP_SUPPRESSED_DROP_CHANCE,
@@ -251,6 +258,10 @@ function createInitialState() {
     stars: createStars(),
     nextId: 1,
     wave: 0,
+    // Timestamp the board first went empty — the next wave doesn't spawn
+    // until WAVE_CLEAR_DELAY_MS after this, not the same frame (see the
+    // main loop). Infinity while asteroids are still on screen.
+    waveClearedAt: Infinity,
     distance: 0,
     distanceScore: 0,
     chaseElapsed: 0,
@@ -260,6 +271,7 @@ function createInitialState() {
     // instead of raw time, so a pause doesn't silently eat into any of it.
     gameTime: 0,
     scrollSpeed: 0,
+    chaseScrollDamp: 1,
     spawnAccum: 0,
     spawnInterval: 0,
     distanceUiAccum: 0,
@@ -313,8 +325,23 @@ function sweptCirclesCollide(ax, ay, avx, avy, ar, bx, by, bvx, bvy, br, dt) {
 // on top of the ship's center-spawn position.
 function spawnWave(s, wave) {
   const count = asteroidCountForWave(wave);
+  const ship = s.ship;
   for (let i = 0; i < count; i++) {
-    const pos = spawnEdgePosition(BOARD_W, BOARD_H);
+    // Reroll a spawn point that'd land too close to the ship — the arena
+    // wraps, so the ship being near one edge is still "close" to a spawn
+    // point that looks far away in straight-line terms (see
+    // wrappedDistance). Capped retries: with several asteroids spawning
+    // at once, a few near-misses are fine, an infinite loop isn't.
+    let pos;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      pos = spawnEdgePosition(BOARD_W, BOARD_H);
+      if (
+        !ship ||
+        wrappedDistance(pos.x, pos.y, ship.x, ship.y, BOARD_W, BOARD_H) >= WAVE_SPAWN_SAFE_RADIUS
+      ) {
+        break;
+      }
+    }
     const velocity = randomAsteroidVelocity("large");
     s.asteroids.push(makeAsteroid(s.nextId++, "large", pos, velocity));
   }
@@ -619,7 +646,11 @@ function updateCenteredShip(s, dt, keys, speedBoosted) {
 function applyPowerupPickup(s, type, now, scoreMult) {
   s.powerupDropSuppressUntil = now + POWERUP_SUPPRESS_MS;
   if (type === "extra_life") {
-    s.lives = Math.min(MAX_LIVES, s.lives + 1);
+    // Centered has no shop/boss-kill life sources to worry about compounding
+    // with, so there's no reason to cap it there — chase keeps its cap
+    // since its 1-life start makes uncapped stacking a much bigger deal.
+    if (s.mode === "centered") s.lives += 1;
+    else s.lives = Math.min(MAX_LIVES, s.lives + 1);
   } else if (type === "shield") {
     // Before Deflector's bought (baseMax 0), a pickup is a plain hold: use
     // it within DEFLECTOR_RECHARGE_MS or it expires, and it doesn't come
@@ -644,8 +675,12 @@ function applyPowerupPickup(s, type, now, scoreMult) {
 
 function updateChaseShip(s, dt, keys, speedBoosted) {
   const ship = s.ship;
-  const accel = speedBoosted ? CHASE_ACCEL * SPEED_BOOST_MULTIPLIER : CHASE_ACCEL;
-  const maxSpeed = speedBoosted ? CHASE_MAX_SPEED * SPEED_BOOST_MULTIPLIER : CHASE_MAX_SPEED;
+  // Permanent, stacking, uncapped reward for every boss killed — separate
+  // from (and multiplies on top of) the speed_boost powerup.
+  const killMultiplier = chaseShipSpeedMultiplierForBossesDefeated(s.bossesDefeated);
+  const boosted = speedBoosted ? SPEED_BOOST_MULTIPLIER : 1;
+  const accel = CHASE_ACCEL * killMultiplier * boosted;
+  const maxSpeed = CHASE_MAX_SPEED * killMultiplier * boosted;
 
   if (keys.up) ship.vy -= accel * dt;
   if (keys.down) ship.vy += accel * dt;
@@ -1465,13 +1500,22 @@ export default function AsteroidsGame() {
             s.chaseElapsed += dt;
             s.distance += s.scrollSpeed * dt;
           }
-          s.scrollSpeed = chaseScrollSpeedForElapsed(s.chaseElapsed);
-          s.spawnInterval = chaseSpawnIntervalForElapsed(s.chaseElapsed);
+          // Eases toward 0.7 while a boss is up, back to 1 once it's dead —
+          // a boss fight is threat enough on its own without the background
+          // asteroid stream also staying at full difficulty (see
+          // CHASE_BOSS_SCROLL_DAMP). Player fire rate/bullet speed read
+          // s.chaseElapsed directly (below), not this damping, so the gun
+          // itself doesn't get weaker during a fight.
+          const scrollDampTarget = s.boss ? CHASE_BOSS_SCROLL_DAMP : 1;
+          s.chaseScrollDamp +=
+            (scrollDampTarget - s.chaseScrollDamp) * (1 - Math.exp(-dt / CHASE_BOSS_SCROLL_EASE_TAU));
+          s.scrollSpeed = chaseScrollSpeedForElapsed(s.chaseElapsed) * s.chaseScrollDamp;
+          s.spawnInterval = chaseSpawnIntervalForDamp(s.chaseElapsed, s.chaseScrollDamp);
 
           s.spawnAccum += dt * 1000;
           if (s.spawnAccum > s.spawnInterval) {
             s.spawnAccum = 0;
-            s.asteroids.push(chaseSpawnAsteroid(s.nextId++, s.chaseElapsed));
+            s.asteroids.push(chaseSpawnAsteroid(s.nextId++, s.scrollSpeed));
           }
 
           for (const a of s.asteroids) {
@@ -1902,11 +1946,24 @@ export default function AsteroidsGame() {
         }
         s.particles = s.particles.filter((p) => p.life > 0);
 
-        // Wave clear (centered mode only — chase spawns continuously).
-        if (!chase && s.asteroids.length === 0 && s.running) {
-          s.wave += 1;
-          spawnWave(s, s.wave);
-          setWave(s.wave);
+        // Wave clear (centered mode only — chase spawns continuously). A
+        // real gap before the next wave, not an instant respawn — matters
+        // most after a bomb, which can empty the board in one frame; an
+        // instant respawn right then could spawn something right on top of
+        // the player with zero warning.
+        if (!chase && s.running) {
+          if (s.asteroids.length === 0) {
+            if (s.waveClearedAt === Infinity) {
+              s.waveClearedAt = now;
+            } else if (now - s.waveClearedAt >= WAVE_CLEAR_DELAY_MS) {
+              s.wave += 1;
+              spawnWave(s, s.wave);
+              setWave(s.wave);
+              s.waveClearedAt = Infinity;
+            }
+          } else {
+            s.waveClearedAt = Infinity;
+          }
         }
       } else {
         s.lastTime = time;
