@@ -367,6 +367,18 @@ html.dark .dark-overlay {
   display: none;
 }
 
+/* Game pages only (asteroids/tetris/typewriter — see .game-page on each
+   page's <main>), touch devices only. Long-press/drag on the play area was
+   selecting page text instead of registering as a game control touch.
+   Doesn't touch text selection anywhere else on the site. */
+@media (pointer: coarse) {
+  .game-page {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none; /* iOS long-press context menu */
+  }
+}
+
 /* Hidden scrollbar (used by the independent scroll panes on project pages). */
 .no-scrollbar {
   scrollbar-width: none; /* Firefox */

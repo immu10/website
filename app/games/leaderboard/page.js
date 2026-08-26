@@ -3,7 +3,7 @@
 // no need to round-trip through our own API route here.
 
 import { getLeaderboard } from "@/app/lib/leaderboard";
-import { GAMES } from "@/app/games/gamesList";
+import { LEADERBOARDS } from "@/app/games/gamesList";
 import GameSelect from "./GameSelect";
 import GuestIcon from "@/app/games/GuestIcon";
 import AuthWidget from "@/app/games/AuthWidget";
@@ -14,7 +14,7 @@ const PAGE_SIZE = 20;
 
 export default async function LeaderboardPage({ searchParams }) {
   const { game: requestedGame, page: pageParam } = await searchParams;
-  const game = GAMES.find((g) => g.slug === requestedGame) ?? GAMES[0];
+  const game = LEADERBOARDS.find((g) => g.slug === requestedGame) ?? LEADERBOARDS[0];
   const page = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
 
   const start = (page - 1) * PAGE_SIZE;
@@ -40,7 +40,7 @@ export default async function LeaderboardPage({ searchParams }) {
         Leaderboard
       </h1>
 
-      <GameSelect games={GAMES} selected={game.slug} />
+      <GameSelect games={LEADERBOARDS} selected={game.slug} />
 
       <p className="-mt-4 text-center font-body text-xs text-white/40">
         New scores can take up to a minute to show up here — don&apos;t worry,

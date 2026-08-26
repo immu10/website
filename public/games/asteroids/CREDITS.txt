@@ -1,0 +1,4 @@
+Sprites (ship.png, meteor_detailed_large.png, meteor_square_large.png,
+boss.png) are from Kenney's "Simple Space" asset pack
+(https://kenney.nl/assets/simple-space), licensed CC0 1.0 — free to use,
+no attribution required.
