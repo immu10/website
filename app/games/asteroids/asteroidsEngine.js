@@ -112,9 +112,14 @@ export function spawnEdgePosition(w, h) {
   return { x: Math.random() * w, y: h + 20 };
 }
 
-export function makeAsteroid(id, size, pos, velocity) {
+// rootId ties every asteroid spawned from the same original large one
+// together (defaults to its own id for a fresh top-level spawn) — see
+// splitAsteroid and the drop-roll in AsteroidsGame.js, which uses it so a
+// split family only ever drops one powerup total, not one per fragment.
+export function makeAsteroid(id, size, pos, velocity, rootId = id) {
   return {
     id,
+    rootId,
     size,
     x: pos.x,
     y: pos.y,
@@ -141,7 +146,8 @@ export function splitAsteroid(asteroid, nextId) {
       nextId + i,
       nextSize,
       { x: asteroid.x, y: asteroid.y },
-      { vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed }
+      { vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed },
+      asteroid.rootId
     );
   });
 }
@@ -365,8 +371,17 @@ export const BOSS_LASER_MAX_BEAMS = 4;
 // without being memorizable.
 export const BOSS_LASER_PATTERN_SLOTS = BOSS_LASER_MAX_BEAMS + 1;
 
+// Growth steepens from tier 10 on — DPS growth is capped (fire-rate ramp
+// tops out, damage upgrades get pricier) while a flat +40/tier forever was
+// letting late fights get comparatively easier instead of harder.
+export const BOSS_HEALTH_STEEP_TIER = 10;
+export const BOSS_HEALTH_PER_TIER = 40;
+export const BOSS_HEALTH_PER_TIER_STEEP = 50;
+
 export function bossHealthForTier(tier) {
-  return BOSS_HEALTH + tier * 40;
+  if (tier < BOSS_HEALTH_STEEP_TIER) return BOSS_HEALTH + tier * BOSS_HEALTH_PER_TIER;
+  const atThreshold = BOSS_HEALTH + BOSS_HEALTH_STEEP_TIER * BOSS_HEALTH_PER_TIER;
+  return atThreshold + (tier - BOSS_HEALTH_STEEP_TIER) * BOSS_HEALTH_PER_TIER_STEEP;
 }
 
 export function bossBurstSizeForTier(tier) {
@@ -499,15 +514,15 @@ export const SHOP_ITEMS = {
 export const SHOP_ITEM_MAX_PURCHASES = {
   pierce: 1,
   dual_fire: 1,
-  deflector: 4,
+  deflector: 3,
   extra_life: 5,
 };
 
 export const SHOP_COST_GROWTH = 1.35;
 
-// Deflector's 4 purchases have their own hand-tuned prices instead of the
+// Deflector's 3 purchases have their own hand-tuned prices instead of the
 // usual growth formula.
-export const DEFLECTOR_COSTS = [5, 6, 8, 10];
+export const DEFLECTOR_COSTS = [5, 6, 8];
 
 export function shopItemCost(itemKey, timesBought) {
   if (itemKey === "deflector") return DEFLECTOR_COSTS[timesBought];
@@ -521,8 +536,21 @@ export function shopItemCost(itemKey, timesBought) {
 export const SHOP_ITEM_MIN_BOSSES_DEFEATED = {
   deflector: 2,
   dual_fire: 3,
-  pierce: 4,
+  pierce: 5,
 };
+
+// Twin Cannons ramps into full offer odds instead of jumping straight to
+// them the moment it unlocks — softens the single-barrel stretch right
+// after boss 3 without pushing the unlock gate itself back further.
+export const DUAL_FIRE_OFFER_WEIGHT_BY_BOSSES = { 3: 0.5, 4: 1, 5: 1.5 };
+const DUAL_FIRE_OFFER_WEIGHT_LATER = 1.5; // holds at the tier-5 weight from boss 6 on
+
+function shopItemOfferWeight(key, bossesDefeated) {
+  if (key === "dual_fire") {
+    return DUAL_FIRE_OFFER_WEIGHT_BY_BOSSES[bossesDefeated] ?? DUAL_FIRE_OFFER_WEIGHT_LATER;
+  }
+  return 1;
+}
 
 // Gacha shop: instead of every item being buyable every visit, the trader
 // offers a random SHOP_OFFER_SIZE-item subset, with a couple of paid
@@ -545,10 +573,18 @@ export function rollShopOffer(shopPurchaseCounts, bossesDefeated) {
     if (minBosses !== undefined && bossesDefeated < minBosses) return false;
     return true;
   });
+  const weights = pool.map((key) => shopItemOfferWeight(key, bossesDefeated));
   const offer = [];
   while (offer.length < SHOP_OFFER_SIZE && pool.length > 0) {
-    const i = Math.floor(Math.random() * pool.length);
+    const total = weights.reduce((sum, w) => sum + w, 0);
+    let r = Math.random() * total;
+    let i = 0;
+    for (; i < pool.length - 1; i++) {
+      r -= weights[i];
+      if (r <= 0) break;
+    }
     offer.push(pool.splice(i, 1)[0]);
+    weights.splice(i, 1);
   }
   return offer;
 }

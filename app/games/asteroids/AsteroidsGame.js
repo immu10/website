@@ -231,6 +231,10 @@ function createInitialState() {
     asteroids: [],
     particles: [],
     powerups: [],
+    // Roots (see makeAsteroid's rootId) that already paid out a powerup
+    // drop from one of their fragments — caps a split family to one drop
+    // total instead of a fresh roll per fragment.
+    droppedRoots: new Set(),
     activePowerups: {},
     powerupUiAccum: 0,
     powerupDropSuppressUntil: 0,
@@ -650,7 +654,7 @@ function applyPowerupPickup(s, type, now, scoreMult) {
     // with, so there's no reason to cap it there — chase keeps its cap
     // since its 1-life start makes uncapped stacking a much bigger deal.
     if (s.mode === "centered") s.lives += 1;
-    else s.lives = Math.min(MAX_LIVES, s.lives + 1);
+    else if (s.lives < MAX_LIVES) s.lives += 1;
   } else if (type === "shield") {
     // Before Deflector's bought (baseMax 0), a pickup is a plain hold: use
     // it within DEFLECTOR_RECHARGE_MS or it expires, and it doesn't come
@@ -1730,7 +1734,12 @@ export default function AsteroidsGame() {
           if (deadBullets.has(b)) continue;
           for (const p of s.powerups) {
             if (collectedPowerups.has(p.id)) continue;
-            if (circlesCollide(b.x, b.y, 2, p.x, p.y, POWERUP_RADIUS)) {
+            // Same tunneling risk as bullet vs asteroid in chase — a fast
+            // bullet can cross a slow-drifting powerup within one frame.
+            const powerupHit = chase
+              ? sweptCirclesCollide(b.x, b.y, b.vx, b.vy, 2, p.x, p.y, p.vx, p.vy, POWERUP_RADIUS, dt)
+              : circlesCollide(b.x, b.y, 2, p.x, p.y, POWERUP_RADIUS);
+            if (powerupHit) {
               deadBullets.add(b);
               collectedPowerups.add(p.id);
               spawnParticles(s, p.x, p.y, POWERUP_COLORS[p.type], 12);
@@ -1779,7 +1788,8 @@ export default function AsteroidsGame() {
                 (now < s.powerupDropSuppressUntil
                   ? POWERUP_SUPPRESSED_DROP_CHANCE
                   : POWERUP_DROP_CHANCE) + s.dropChanceBonus;
-              if (Math.random() < dropChance) {
+              if (!s.droppedRoots.has(a.rootId) && Math.random() < dropChance) {
+                s.droppedRoots.add(a.rootId);
                 const type = chase
                   ? rollPowerupType("chase", s.chaseElapsed)
                   : rollPowerupType("centered", s.wave);
@@ -1855,7 +1865,25 @@ export default function AsteroidsGame() {
               break;
             }
           }
-          if (!hit && s.boss && circlesCollide(ship.x, ship.y, SHIP_RADIUS * 0.8, s.boss.x, s.boss.y, BOSS_RADIUS)) {
+          if (
+            !hit &&
+            s.boss &&
+            // Boss motion (bob) is slow enough to treat as stationary here —
+            // same reasoning as the bullet-vs-boss check above.
+            sweptCirclesCollide(
+              ship.x,
+              ship.y,
+              ship.vx,
+              ship.vy,
+              SHIP_RADIUS * 0.8,
+              s.boss.x,
+              s.boss.y,
+              0,
+              0,
+              BOSS_RADIUS,
+              dt
+            )
+          ) {
             hit = true;
           }
           if (!hit) {
