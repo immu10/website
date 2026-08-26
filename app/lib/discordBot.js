@@ -158,12 +158,19 @@ const TOP_RANK_THRESHOLD = 3;
 // 3 right now, and if so fires the broadcast. Takes the already-constructed
 // Redis client so callers don't need to import getRedis separately just
 // for this.
-export async function notifyIfTopScore(redis, game, id, name) {
+//
+// beforeRank (optional): this same id's rank right before this write — only
+// meaningful for logged-in accounts, whose id is stable across submissions
+// (guests get a fresh id every time, so there's no "before" to compare).
+// If the rank didn't actually move (still #1, still #2, etc.), the visible
+// top 3 didn't change, so there's nothing worth announcing — just the same
+// person padding their own score further ahead.
+export async function notifyIfTopScore(redis, game, id, name, beforeRank = null) {
   try {
     const rank = await redis.zrevrank(`${game}:leaderboard`, id);
-    if (rank !== null && rank !== undefined && rank < TOP_RANK_THRESHOLD) {
-      await broadcastTopScore(redis, game, name, rank);
-    }
+    if (rank === null || rank === undefined || rank >= TOP_RANK_THRESHOLD) return;
+    if (rank === beforeRank) return;
+    await broadcastTopScore(redis, game, name, rank);
   } catch {
     // Never let this affect the score submission that triggered it.
   }
