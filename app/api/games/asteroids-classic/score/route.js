@@ -14,10 +14,13 @@ import { validateName } from "@/app/lib/profanity";
 import { getSession } from "@/app/lib/auth";
 import { checkRateLimit } from "@/app/lib/ratelimit";
 import { getClientIp } from "@/app/lib/ip";
+import { notifyIfTopScore } from "@/app/lib/discordBot";
 import {
   MIN_ELAPSED_SECONDS,
   maxPlausibleScore,
 } from "@/app/games/asteroids/leaderboardRules";
+
+const GAME = "asteroids-classic";
 
 export const dynamic = "force-dynamic";
 
@@ -109,6 +112,10 @@ export async function POST(request) {
       ts: Date.now(),
       ...(changed > 0 ? { score } : {}),
     });
+    // Only worth checking the leaderboard-announcement bot when this
+    // submission actually moved the stored score — an unchanged (lower)
+    // resubmit can't have changed anyone's rank.
+    if (changed > 0) await notifyIfTopScore(redis, GAME, id, displayName, score);
   } else {
     const id = randomUUID();
     await redis.hset(`asteroids-classic:entry:${id}`, {
@@ -118,6 +125,7 @@ export async function POST(request) {
       ts: Date.now(),
     });
     await redis.zadd("asteroids-classic:leaderboard", { score, member: id });
+    await notifyIfTopScore(redis, GAME, id, displayName, score);
   }
 
   await redis.zremrangebyrank("asteroids-classic:leaderboard", 0, -(MAX_ENTRIES + 1));
