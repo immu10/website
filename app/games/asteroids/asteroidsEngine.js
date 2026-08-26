@@ -56,11 +56,43 @@ export function asteroidCountForWave(wave) {
   return Math.min(11, 3 + wave);
 }
 
+// Centered mode only: a real beat between one wave clearing and the next
+// spawning, instead of instant respawn — matters most right after a bomb,
+// which can clear the board in a single frame and previously would spawn a
+// fresh wave that same frame with zero warning.
+export const WAVE_CLEAR_DELAY_MS = 1000;
+
+// New-wave spawn points reroll if they'd land this close to the ship (see
+// wrappedDistance — centered mode wraps, so "close" isn't just straight-
+// line distance). Radius covers a large asteroid plus room to react, not
+// just avoid instant overlap.
+export const WAVE_SPAWN_SAFE_RADIUS = 140;
+
 export function wrap(pos, w, h) {
   if (pos.x < 0) pos.x += w;
   else if (pos.x >= w) pos.x -= w;
   if (pos.y < 0) pos.y += h;
   else if (pos.y >= h) pos.y -= h;
+}
+
+// Shortest distance between two points on a board that wraps at w/h — e.g.
+// a point at x=5 and one at x=w-5 are only 10px apart going "around the
+// edge," not w-10px apart in a straight line. Needed anywhere that measures
+// closeness in centered mode, since the arena being a torus means the
+// straight-line distance is often the wrong answer.
+export function wrappedDistance(ax, ay, bx, by, w, h) {
+  // Normalize first — callers may pass points slightly outside [0,w)/[0,h)
+  // (e.g. spawnEdgePosition's just-off-the-edge spawns), which the plain
+  // abs-diff check below would otherwise get backwards right at the edge.
+  const nax = ((ax % w) + w) % w;
+  const nbx = ((bx % w) + w) % w;
+  const nay = ((ay % h) + h) % h;
+  const nby = ((by % h) + h) % h;
+  let dx = Math.abs(nax - nbx);
+  if (dx > w / 2) dx = w - dx;
+  let dy = Math.abs(nay - nby);
+  if (dy > h / 2) dy = h - dy;
+  return Math.hypot(dx, dy);
 }
 
 export function randomAsteroidVelocity(size) {
@@ -138,6 +170,15 @@ export const CHASE_MAX_SPEED = 538; // px/sec, both axes
 export const CHASE_DRAG = 4.5; // heavier than centered mode's DRAG — with
 // only one life, snappy stops matter more than coasting.
 
+// Reward for surviving a boss fight, not just a shop purchase — stacks
+// every kill, uncapped, same "let it keep climbing" philosophy as the rest
+// of chase's late-game scaling.
+export const CHASE_BOSS_KILL_SPEED_BONUS = 0.05; // +5% accel/max-speed per kill
+
+export function chaseShipSpeedMultiplierForBossesDefeated(bossesDefeated) {
+  return 1 + bossesDefeated * CHASE_BOSS_KILL_SPEED_BONUS;
+}
+
 export const CHASE_BASE_SCROLL_SPEED = 140; // px/sec
 export const CHASE_SPAWN_INTERVAL_BASE_MS = 900;
 export const CHASE_SPAWN_INTERVAL_MIN_MS = 280;
@@ -200,6 +241,24 @@ export function chaseBulletSpeedForElapsed(elapsedSeconds) {
   return BULLET_SPEED * speedFactor;
 }
 
+// While a boss is up, the world scroll speed (and how often asteroids
+// spawn) eases down — a boss fight is already the main threat, so the
+// background asteroid stream doesn't need to be at full difficulty on top
+// of it. Deliberately NOT applied to chaseFireCooldownForElapsed/
+// chaseBulletSpeedForElapsed above — those read elapsed time directly, not
+// this damping, so the player's own gun keeps progressing normally through
+// a fight instead of also getting slower.
+export const CHASE_BOSS_SCROLL_DAMP = 0.7; // 30% reduction while a boss is present
+export const CHASE_BOSS_SCROLL_EASE_TAU = 1.2; // seconds — ease in/out, not a snap
+
+// Spawn interval divides by the same damp factor (rather than being left
+// alone) so a slower scroll doesn't just mean asteroids linger on screen
+// longer at an unchanged spawn rate — that would net out to MORE clutter,
+// the opposite of the point.
+export function chaseSpawnIntervalForDamp(elapsedSeconds, damp) {
+  return chaseSpawnIntervalForElapsed(elapsedSeconds) / damp;
+}
+
 export function chaseFireCooldownForElapsed(elapsedSeconds) {
   const speedFactor = chaseScrollSpeedForElapsed(elapsedSeconds) / CHASE_BASE_SCROLL_SPEED;
   return Math.max(CHASE_MIN_FIRE_COOLDOWN_MS, FIRE_COOLDOWN_MS / speedFactor);
@@ -208,10 +267,13 @@ export function chaseFireCooldownForElapsed(elapsedSeconds) {
 // Spawns just past the right edge at a random height, drifting with the
 // scroll (plus a little vertical wobble) so it reads as an obstacle in the
 // ship's path rather than a random flung rock.
-export function chaseSpawnAsteroid(id, elapsedSeconds) {
+// Takes the actual current scroll speed rather than deriving it from
+// elapsed time itself, so a spawn during a damped boss fight (see
+// CHASE_BOSS_SCROLL_DAMP) comes in at the same reduced speed the world is
+// actually scrolling at, instead of the full undamped rate.
+export function chaseSpawnAsteroid(id, scrollSpeed) {
   const sizes = ["large", "medium", "small"];
   const size = sizes[Math.floor(Math.random() * sizes.length)];
-  const scrollSpeed = chaseScrollSpeedForElapsed(elapsedSeconds);
   const pos = { x: BOARD_W + 40, y: Math.random() * BOARD_H };
   const velocity = {
     vx: -scrollSpeed * (0.85 + Math.random() * 0.3),
@@ -561,6 +623,9 @@ export const POWERUP_LIFETIME_MS = 9000;
 const POWERUP_DRIFT_SPEED_MIN = 15;
 const POWERUP_DRIFT_SPEED_MAX = 40;
 
+// Chase-only cap — 1-life start makes uncapped stacking a much bigger deal
+// than in centered, which has no shop/boss-kill life sources to compound
+// with and so isn't capped at all (see applyPowerupPickup).
 export const MAX_LIVES = 3;
 
 // Deflector: every ship has at least one charge, and a charge eats exactly
